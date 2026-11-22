@@ -2,6 +2,12 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v2
+
+- 1940s portable-receiver look: black leatherette case, chrome louvre grille, brass trim, and a backlit cream slide-rule dial (2m and 70cm scales) whose red needle points to QUIET, HEADS-UP or OPEN. On startup the dial lamp warms up and the needle tunes in, in time with the startup sound. Findings show as pilot lamps (green = alert, amber = heads-up, red = couldn't check).
+- WW2-era radio sounds: bakelite toggle snap on main buttons, rotary detent on link buttons, and a valve-set warm-up (hum, tuning sweep, CW "PW") on startup. All sounds are original, synthesised for PropWatch.
+- "Radio switch sounds" on/off switch in Settings (takes effect instantly).
+
 ## What it checks
 
 | Mode | Source | Alert when |
