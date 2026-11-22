@@ -104,6 +104,9 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
             c.drawText("${i + 1}", px + tr * cos(a).toFloat(), py + tr * sin(a).toFloat() + mark.textSize * 0.36f, mark)
         }
         c.drawText("BROADCAST", px, inner.top + small.textSize + 3 * d, small)
+        // Needle (under the station card, so the name stays readable).
+        val a = ang(needle)
+        c.drawLine(px, py, px + ro * 1.02f * cos(a).toFloat(), py + ro * 1.02f * sin(a).toFloat(), needlePaint)
         // What the set is doing, in the middle of the dial.
         status.color = Radio.mix(Color.rgb(0x6A, 0x58, 0x3A), Radio.CREAM, 0.3f + 0.7f * g)
         val text = when (state) {
@@ -122,9 +125,6 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
         c.drawRoundRect(r, 3 * d, 3 * d, card)
         c.drawText(text, px, ty, status)
         status.textSize = size
-        // Needle and hub.
-        val a = ang(needle)
-        c.drawLine(px, py, px + ro * 1.02f * cos(a).toFloat(), py + ro * 1.02f * sin(a).toFloat(), needlePaint)
         c.restore()
         hub.shader = RadialGradient(px - d, inner.bottom - 2 * d, 6 * d, Color.rgb(0xF6, 0xF6, 0xF2), Radio.CHROME_DARK, Shader.TileMode.CLAMP)
         c.drawCircle(px, inner.bottom - 1 * d, 4 * d, hub)
