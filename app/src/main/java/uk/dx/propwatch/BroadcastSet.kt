@@ -47,6 +47,7 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private val small = paint { typeface = Radio.SERIF; textSize = 5.5f * t; letterSpacing = 0.25f; textAlign = Paint.Align.CENTER }
     private val needlePaint = paint(Color.rgb(0xF4, 0xEC, 0xD8)) { strokeWidth = 1.6f * d; strokeCap = Paint.Cap.ROUND }
     private val hub = paint()
+    private val card = paint()
     private val label = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 7.5f * t; letterSpacing = 0.06f; textAlign = Paint.Align.CENTER }
     private val btn = paint()
     private val btnEdge = paint(Color.BLACK) { style = Paint.Style.STROKE; strokeWidth = 1f * d }
@@ -111,7 +112,16 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
             StreamService.State.ERROR -> "NO SIGNAL"
             StreamService.State.PLAYING -> stations.getOrNull(playing)?.name?.uppercase() ?: "ON THE AIR"
         }
-        fitText(c, text, px, inner.top + inner.height() * 0.62f, status, inner.width() * 0.8f)
+        // On a dark card of its own so it reads clearly over the scales.
+        val ty = inner.top + inner.height() * 0.62f
+        val size = status.textSize
+        while (status.measureText(text) > inner.width() * 0.8f && status.textSize > 8 * d) status.textSize *= 0.94f
+        val tw = status.measureText(text)
+        r.set(px - tw / 2 - 5 * d, ty - status.textSize, px + tw / 2 + 5 * d, ty + status.textSize * 0.35f)
+        card.color = Color.argb(0xD8, 0x0A, 0x08, 0x06)
+        c.drawRoundRect(r, 3 * d, 3 * d, card)
+        c.drawText(text, px, ty, status)
+        status.textSize = size
         // Needle and hub.
         val a = ang(needle)
         c.drawLine(px, py, px + ro * 1.02f * cos(a).toFloat(), py + ro * 1.02f * sin(a).toFloat(), needlePaint)
