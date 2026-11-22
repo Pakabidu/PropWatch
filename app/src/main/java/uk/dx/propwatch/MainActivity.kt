@@ -36,6 +36,8 @@ class MainActivity : Activity() {
     private var tonePlate: TonePlateView? = null
     private lateinit var tropoBox: LinearLayout
     private lateinit var moodLight: MoodLightView
+    private var downloadReceiver: android.content.BroadcastReceiver? = null
+    private var pendingInstall = -1L   // build waiting for the user to allow installs
     private lateinit var contentRoot: View
     private var microwaveOpen = false
     private lateinit var logChart: LogChartView
@@ -195,7 +197,19 @@ class MainActivity : Activity() {
             // with the same valve warm-up sound as pressing Check now.
             dial?.warmUp(level(report))
             checkNow()
+            autoUpdate()
         }
+        // Offer to install an update as soon as its download finishes.
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context, i: Intent) {
+                val id = i.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+                if (id == Store.updateDownloadId(this@MainActivity)) onUpdateDownloaded()
+            }
+        }
+        downloadReceiver = receiver
+        androidx.core.content.ContextCompat.registerReceiver(this, receiver,
+            android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
     }
 
     /** The 1940s portable: handle, grille and tone plate, dial, waveband plate, readout, main button. */
@@ -610,8 +624,19 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onDestroy() {
+        downloadReceiver?.let { runCatching { unregisterReceiver(it) } }
+        super.onDestroy()
+    }
+
     override fun onResume() {
         super.onResume()
+        // Back from allowing PropWatch to install apps: carry on with the install.
+        if (pendingInstall > 0 && Updater.canInstall(this)) {
+            val build = pendingInstall
+            pendingInstall = -1
+            Updater.downloaded(this, build)?.let { startActivity(Updater.installIntent(this, it)) }
+        }
         // Back from the system location settings: hide the prompt once location is on.
         if (::locOnBtn.isInitialized && locOnBtn.visibility == View.VISIBLE && Locator.enabled(this)) {
             locOnBtn.visibility = View.GONE
@@ -732,6 +757,70 @@ class MainActivity : Activity() {
         }
     }
 
+    // ---- Updates: checked on every start, downloaded in the background, installed on request ----
+
+    /** Quietly checks for a newer build at startup and, if there is one, fetches it. */
+    private fun autoUpdate() {
+        Thread {
+            runCatching { Updater.cleanUp(this) }
+            val info = runCatching { Updater.check(this) }.getOrNull() ?: return@Thread
+            if (info.newer) runOnUiThread { if (!isFinishing) handleNewBuild(info, fromUser = false) }
+        }.start()
+    }
+
+    /**
+     * A newer build exists: offer to install it if it's already downloaded, otherwise
+     * start downloading it (unless that's already under way). [fromUser]: from the
+     * Check for updates button, so say what's happening even when nothing new starts.
+     */
+    private fun handleNewBuild(info: Updater.Info, fromUser: Boolean) {
+        val file = Updater.downloaded(this, info.latest)
+        when {
+            file != null -> offerInstall(info.latest, file)
+            Updater.downloading(this, info.latest) -> if (fromUser)
+                Toast.makeText(this, "Already downloading build ${info.latest}…", Toast.LENGTH_SHORT).show()
+            else -> runCatching { Updater.download(this, info.latest) }
+                .onSuccess {
+                    Toast.makeText(this, "New version found (build ${info.latest}). Downloading…", Toast.LENGTH_LONG).show()
+                }
+                .onFailure {
+                    // No download manager: fall back to the browser.
+                    if (fromUser) startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Updater.APK_URL)))
+                }
+        }
+    }
+
+    /** The update download finished: offer the install, or say it failed. */
+    private fun onUpdateDownloaded() {
+        if (isFinishing) return
+        val build = Store.updateBuild(this)
+        val file = Updater.downloaded(this, build)
+        if (file != null && build > Updater.currentBuild(this)) offerInstall(build, file)
+        else if (Updater.status(this) == android.app.DownloadManager.STATUS_FAILED)
+            Toast.makeText(this, "The update didn't download. Try Check for updates later.", Toast.LENGTH_LONG).show()
+    }
+
+    private fun offerInstall(build: Long, file: java.io.File) {
+        AlertDialog.Builder(this)
+            .setTitle("Update ready")
+            .setMessage("PropWatch build $build has downloaded (you have build ${Updater.currentBuild(this)}).\n\n" +
+                "Install it now? Your settings are kept.")
+            .setPositiveButton("Install") { _, _ -> install(build, file) }
+            .setNegativeButton("Later", null)
+            .show()
+    }
+
+    /** Hands the APK to Android's installer; the first time, the user allows PropWatch to install apps. */
+    private fun install(build: Long, file: java.io.File) {
+        if (!Updater.canInstall(this)) {
+            pendingInstall = build
+            Toast.makeText(this, "Allow PropWatch to install updates, then come back.", Toast.LENGTH_LONG).show()
+            startActivity(Updater.allowInstallsIntent(this))
+            return
+        }
+        startActivity(Updater.installIntent(this, file))
+    }
+
     private fun checkForUpdate() {
         updateBtn.isEnabled = false
         updateBtn.text = "Checking…"
@@ -743,16 +832,7 @@ class MainActivity : Activity() {
                 if (isFinishing) return@runOnUiThread
                 res.onSuccess { info ->
                     if (info.newer) {
-                        AlertDialog.Builder(this)
-                            .setTitle("Update available")
-                            .setMessage("Build ${info.latest} is available (you have build ${info.current}).\n\n" +
-                                "Download it, then open PropWatch.apk to install over this version. " +
-                                "Your settings are kept.")
-                            .setPositiveButton("Download") { _, _ ->
-                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Updater.APK_URL)))
-                            }
-                            .setNegativeButton("Later", null)
-                            .show()
+                        handleNewBuild(info, fromUser = true)
                     } else {
                         Toast.makeText(this, "You're up to date (build ${info.current})", Toast.LENGTH_SHORT).show()
                     }
