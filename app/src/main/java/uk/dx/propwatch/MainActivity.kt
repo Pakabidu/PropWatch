@@ -30,9 +30,11 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var results: LinearLayout
     private lateinit var checkBtn: Button
-    private lateinit var dial: DialView
-    private lateinit var bandPlate: BandPlateView
-    private lateinit var tonePlate: TonePlateView
+    // Front panel parts: the portable cabinet uses the first three, the receiver the last.
+    private var dial: DialView? = null
+    private var bandPlate: BandPlateView? = null
+    private var tonePlate: TonePlateView? = null
+    private var receiver: ReceiverPanelView? = null
     private lateinit var logChart: LogChartView
     private lateinit var updateBtn: Button
     private lateinit var latField: EditText
@@ -56,59 +58,14 @@ class MainActivity : Activity() {
         if (ask.isNotEmpty() && savedInstanceState == null) requestPermissions(ask.toTypedArray(), REQ_STARTUP)
         PropWorker.schedule(this)
         Sfx.init(this)
+        Radio.skin = Store.skin(this)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(32))
         }
 
-        // Carrying handle, then the case front: grille and tone plate, dial, band plate, readout, main button.
-        root.addView(HandleView(this))
-        val front = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(14), dp(12), dp(14))
-            background = GradientDrawable().apply {
-                setColor(Color.argb(0x40, 0, 0, 0)); cornerRadius = dp(16).toFloat(); setStroke(dp(3), Color.rgb(0x05, 0x04, 0x04))
-            }
-        }
-        val upper = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200))
-        }
-        upper.addView(GrilleView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.6f)
-        })
-        tonePlate = TonePlateView(this).apply {
-            switches = toneSwitches()
-            onToggle = { i, on -> toggle(i, on) }
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply { leftMargin = dp(10) }
-        }
-        upper.addView(tonePlate)
-        front.addView(upper)
-        dial = DialView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
-        }
-        front.addView(dial)
-        bandPlate = BandPlateView(this).apply {
-            selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
-            onSelect = { i ->
-                Sfx.click(this@MainActivity)
-                Store.saveBand(this@MainActivity, BAND_KEYS[i])
-                render(Store.loadReport(this@MainActivity), animateNeedle = true)
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
-        }
-        front.addView(bandPlate)
-        status = TextView(this).apply {
-            textSize = 15f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.95f
-            gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(10))
-        }
-        front.addView(status)
-        checkBtn = radioButton("Check now") { checkNow() }
-        front.addView(checkBtn)
-        root.addView(front)
+        if (Radio.receiver) buildReceiverFront(root) else buildPortableFront(root)
 
         // The open lid: log chart, readings, sources and settings on a black instruction panel.
         val lid = LinearLayout(this).apply {
@@ -139,6 +96,15 @@ class MainActivity : Activity() {
         )))
 
         lid.addView(section("Settings"))
+        lid.addView(label("Cabinet"))
+        for ((skin, name) in listOf(Radio.Skin.PORTABLE to "1940s portable", Radio.Skin.RECEIVER to "Communications receiver")) {
+            lid.addView(radioButton((if (Radio.skin == skin) "● " else "○ ") + name) {
+                if (Radio.skin != skin) {
+                    Store.saveSkin(this, skin)
+                    recreate()   // rebuild the whole screen in the new cabinet
+                }
+            })
+        }
         val st = Store.station(this)
         val lat = number("Latitude", "%.4f".format(java.util.Locale.US, st.lat)).also { latField = it }
         val lon = number("Longitude", "%.4f".format(java.util.Locale.US, st.lon)).also { lonField = it }
@@ -202,7 +168,7 @@ class MainActivity : Activity() {
         })
 
         setContentView(ScrollView(this).apply {
-            background = Radio.leatherette(this@MainActivity)
+            background = Radio.background(this@MainActivity)
             isFillViewport = true
             addView(root)
         })
@@ -215,8 +181,104 @@ class MainActivity : Activity() {
         render(report, animateNeedle = false)
         if (savedInstanceState == null) {
             Sfx.startup(this)
-            dial.warmUp(level(report))
+            dial?.warmUp(level(report))
+            receiver?.warmUp(Bands.level(report?.findings.orEmpty(), Store.band(this)), kp(report))
         }
+    }
+
+    /** The 1940s portable: handle, grille and tone plate, dial, waveband plate, readout, main button. */
+    private fun buildPortableFront(root: LinearLayout) {
+        // Carrying handle, then the case front: grille and tone plate, dial, band plate, readout, main button.
+        root.addView(HandleView(this))
+        val front = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(14), dp(12), dp(14))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(0x40, 0, 0, 0)); cornerRadius = dp(16).toFloat(); setStroke(dp(3), Color.rgb(0x05, 0x04, 0x04))
+            }
+        }
+        val upper = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200))
+        }
+        upper.addView(GrilleView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.6f)
+        })
+        val tonePlateView = TonePlateView(this).apply {
+            switches = toneSwitches()
+            onToggle = { i, on -> toggle(i, on) }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply { leftMargin = dp(10) }
+        }
+        tonePlate = tonePlateView
+        upper.addView(tonePlateView)
+        front.addView(upper)
+        val dialView = DialView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
+        }
+        dial = dialView
+        front.addView(dialView)
+        val bandPlateView = BandPlateView(this).apply {
+            selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
+            onSelect = { i ->
+                Sfx.click(this@MainActivity)
+                Store.saveBand(this@MainActivity, BAND_KEYS[i])
+                render(Store.loadReport(this@MainActivity), animateNeedle = true)
+            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
+        }
+        bandPlate = bandPlateView
+        front.addView(bandPlateView)
+        status = TextView(this).apply {
+            textSize = 15f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.95f
+            gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(10))
+        }
+        front.addView(status)
+        checkBtn = radioButton("Check now") { checkNow() }
+        front.addView(checkBtn)
+        root.addView(front)
+    }
+
+    /**
+     * The communications receiver: speaker cabinet on top, then the receiver's crackle
+     * front panel (dials, meters, nameplate, working knobs and toggles), readout and button.
+     */
+    private fun buildReceiverFront(root: LinearLayout) {
+        root.addView(SpeakerCabinetView(this))
+        root.addView(View(this).apply {   // the cabinet's top lip
+            background = Radio.tile(this@MainActivity, Radio.greyCrackle)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(12))
+        })
+        val front = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Radio.tile(this@MainActivity, Radio.blackCrackle)
+            setPadding(0, 0, 0, dp(14))
+        }
+        val panel = ReceiverPanelView(this).apply {
+            bands = BAND_KEYS.map { k -> if (k == "all") "ALL" else Bands.ALL.first { it.first == k }.second }
+            selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
+            toggles = toneSwitches()
+            onCheck = { if (checkBtn.isEnabled) { Sfx.click(this@MainActivity); checkNow() } }
+            onSelect = { i ->
+                Sfx.detent(this@MainActivity)
+                Store.saveBand(this@MainActivity, BAND_KEYS[i])
+                render(Store.loadReport(this@MainActivity), animateNeedle = true)
+            }
+            onToggle = { i, on -> toggle(i, on) }
+        }
+        receiver = panel
+        front.addView(panel)
+        status = TextView(this).apply {
+            textSize = 15f; typeface = Radio.MONO; setTextColor(Radio.CREAM)
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(4), dp(12), dp(10))
+        }
+        front.addView(status)
+        checkBtn = radioButton("Check now") { checkNow() }.apply {
+            (layoutParams as LinearLayout.LayoutParams).setMargins(dp(14), dp(4), dp(14), dp(4))
+        }
+        front.addView(checkBtn)
+        root.addView(front)
     }
 
     // ---- Styled widgets ----
@@ -373,12 +435,29 @@ class MainActivity : Activity() {
      * lid's "operating instructions" headers. pill: the rounded nameplate across the top.
      */
     private fun section(t: String, first: Boolean = false, pill: Boolean = false) = TextView(this).apply {
-        text = t.uppercase(); textSize = if (pill) 14f else 13.5f; typeface = Radio.SERIF
+        textSize = if (pill) 14f else 13.5f
         letterSpacing = if (pill) 0.3f else 0.22f
-        setTextColor(Radio.INK); gravity = Gravity.CENTER
+        gravity = Gravity.CENTER
         setPadding(dp(8), dp(if (pill) 5 else 3), dp(8), dp(if (pill) 5 else 3))
-        background = GradientDrawable().apply {
-            setColor(Radio.CREAM); cornerRadius = dp(if (pill) 14 else 1).toFloat()
+        if (Radio.receiver) {
+            // Receiver: white engraved capitals between red chevrons, like its nameplate.
+            val label = "›››  ${t.uppercase()}  ‹‹‹"
+            text = android.text.SpannableString(label).apply {
+                val red = Radio.PANEL_RED
+                setSpan(android.text.style.ForegroundColorSpan(red), 0, 3, 0)
+                setSpan(android.text.style.ForegroundColorSpan(red), label.length - 3, label.length, 0)
+            }
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            setTextColor(Radio.CREAM)
+            background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT); cornerRadius = dp(4).toFloat(); setStroke(dp(1), Color.argb(0x80, 0xEC, 0xE8, 0xDC))
+            }
+        } else {
+            text = t.uppercase(); typeface = Radio.SERIF
+            setTextColor(Radio.INK)
+            background = GradientDrawable().apply {
+                setColor(Radio.CREAM); cornerRadius = dp(if (pill) 14 else 1).toFloat()
+            }
         }
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, if (first) 0 else dp(20), 0, dp(8)) }
@@ -404,6 +483,11 @@ class MainActivity : Activity() {
 
     /** Needle position for the selected waveband: 0 quiet, 1 heads-up, 2 open. */
     private fun level(r: Report?): Int = Bands.level(r?.findings.orEmpty(), Store.band(this)).coerceAtLeast(0)
+
+    /** Latest planetary K index from the aurora reading ("Kp 3.67 …"), for the receiver's Kp meter. */
+    private fun kp(r: Report?): Float? = r?.findings?.firstOrNull { it.mode == "Aurora" }?.let { f ->
+        Regex("Kp (\\d+(?:\\.\\d+)?)").find(f.headline + " " + f.detail)?.groupValues?.get(1)?.toFloatOrNull()
+    }
 
     /** The readings for the selected waveband button. */
     private fun shown(r: Report?): List<Finding> {
@@ -445,6 +529,7 @@ class MainActivity : Activity() {
     private fun checkNow() {
         checkBtn.isEnabled = false
         checkBtn.text = "Tuning…"
+        receiver?.setChecking(true)
         if (Store.useGps(this)) Locator.lastKnown(this)?.let { useFix(it) }
         val station = Store.station(this)
         Thread {
@@ -454,6 +539,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 checkBtn.isEnabled = true
                 checkBtn.text = "Check now"
+                receiver?.setChecking(false)
                 render(r, animateNeedle = true)
             }
         }.start()
@@ -640,9 +726,11 @@ class MainActivity : Activity() {
 
     private fun render(r: Report?, animateNeedle: Boolean) {
         results.removeAllViews()
-        bandPlate.rows = bandRows(r)
+        bandPlate?.rows = bandRows(r)
+        receiver?.bandLamps = bandRows(r).map { it.lamp }
         logChart.entries = Store.history(this)
-        if (animateNeedle) dial.setLevel(level(r))
+        if (animateNeedle) dial?.setLevel(level(r))
+        receiver?.show(Bands.level(r?.findings.orEmpty(), Store.band(this)), kp(r), animateNeedle)
         if (r == null) {
             status.text = "NO READINGS YET — PRESS CHECK NOW"
             return

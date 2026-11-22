@@ -540,6 +540,9 @@ class LogChartView(ctx: Context) : CabinetView(ctx) {
         setMeasuredDimension(MeasureSpec.getSize(w), (head + Bands.ALL.size * rowH + keyH).toInt())
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+        // On the receiver the chart is backlit amber, like its dials.
+        paper.shader = if (Radio.receiver) RadialGradient(w / 2f, h * 0.9f, w * 0.8f,
+            intArrayOf(Radio.AMBER_LIGHT, Radio.AMBER, Radio.AMBER_DARK), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP) else null
         val r = kotlin.random.Random(11)
         specks.clear()
         repeat((w * h / (30 * d * d)).toInt().coerceAtMost(900)) {
@@ -668,13 +671,25 @@ class StationLogView(ctx: Context) : CabinetView(ctx) {
         c.drawRoundRect(0f, 0f, w, ribbonH, 2 * d, 2 * d, ribbon)
         c.drawText("STATION LOG", w / 2, ribbonH / 2 + ribbonText.textSize * 0.36f, ribbonText)
 
-        // World chart.
-        c.drawRect(mapRect, sea)
-        grid.color = Radio.mix(Color.rgb(0x1E, 0x1B, 0x17), Color.rgb(0x3A, 0x34, 0x2A), glow)
+        // World chart: cream continents on black (portable), or dark continents on a
+        // backlit amber chart (receiver).
+        if (Radio.receiver) {
+            sea.shader = RadialGradient(mapRect.centerX(), mapRect.bottom, mapRect.width() * 0.75f,
+                intArrayOf(Radio.mix(Color.rgb(0x50, 0x38, 0x18), Radio.AMBER_LIGHT, glow), Radio.mix(Color.rgb(0x3A, 0x26, 0x10), Radio.AMBER, glow),
+                    Radio.mix(Color.rgb(0x20, 0x14, 0x08), Radio.AMBER_DARK, glow)), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
+            c.drawRect(mapRect, sea)
+            grid.color = Color.argb(0x60, 0x2A, 0x16, 0x06)
+            land.color = Color.argb(0xD0, 0x3A, 0x22, 0x0C)
+            coast.color = Radio.DIAL_INK
+        } else {
+            sea.shader = null
+            c.drawRect(mapRect, sea)
+            grid.color = Radio.mix(Color.rgb(0x1E, 0x1B, 0x17), Color.rgb(0x3A, 0x34, 0x2A), glow)
+            land.color = Radio.mix(Color.rgb(0x3A, 0x35, 0x2C), Color.rgb(0xD8, 0xCB, 0xA6), glow)
+            coast.color = Radio.mix(Color.rgb(0x50, 0x48, 0x3A), Radio.CREAM, glow)
+        }
         for (lon in -150..150 step 30) c.drawLine(mapX(lon.toDouble()), mapRect.top, mapX(lon.toDouble()), mapRect.bottom, grid)
         for (lat in -30..60 step 30) c.drawLine(mapRect.left, mapY(lat.toDouble()), mapRect.right, mapY(lat.toDouble()), grid)
-        land.color = Radio.mix(Color.rgb(0x3A, 0x35, 0x2C), Color.rgb(0xD8, 0xCB, 0xA6), glow)
-        coast.color = Radio.mix(Color.rgb(0x50, 0x48, 0x3A), Radio.CREAM, glow)
         c.save(); c.clipRect(mapRect)
         for (p in shapes) { c.drawPath(p, land); c.drawPath(p, coast) }
         if (locating) {

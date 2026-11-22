@@ -2,6 +2,14 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v5.3
+
+- **Second cabinet: Communications receiver.** Settings → Cabinet switches between the 1940s portable and a 1940s communications receiver, modelled closely on the classic ham-shack receivers (original artwork; no maker's names or logos):
+  - A grey crackle speaker cabinet with chrome louvres on top; a black crackle front panel with chrome art-deco ribs on the sides.
+  - An amber backlit main dial with stacked HF, 6m, 2m and 70cm scales and a condition scale, read by a hairline pointer. An **S-meter** reads S3 when quiet, S7 for a heads-up and S9+ when a band is open; a **Kp meter** shows the latest planetary K index from NOAA.
+  - Red-chevron nameplate. The gold-ringed vernier knob is **Check now** (its ring turns while checking); the rotary **waveband switch** picks the band, with a pilot lamp by each band that's open or worth a look; the toggles are **SOUND**, **MONITOR** and **GPS**. TONE, SELECTIVITY and BAND SPREAD are for show.
+  - Below the panel, the log chart and station-log map are backlit amber and the lettering is white, with red-chevron headings.
+
 ## What's new in v5.2
 
 - **Bigger lettering everywhere.** Text on the dial, plates, log chart and station log is about 30% larger, and now also follows the phone's font-size setting (up to 1.5x), with the layout growing to fit. Readings, sources, settings and buttons use larger, higher-contrast type too.
