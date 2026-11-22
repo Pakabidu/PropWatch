@@ -2,6 +2,18 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v5.8
+
+- **Tropo band configuration** (`TropoBands.kt`): VHF, UHF and microwave bands for tropospheric ducting (HF is excluded). Core bands 6m, 4m, 2m, 1.25m, 70cm and 23cm; an optional microwave group of 13cm, 9cm, 6cm and 3cm. Each band records its ITU-region allocations and a **duct sensitivity factor** relative to 2m, from the duct cut-off λmax ≈ 0.014·d^1.5: higher bands are trapped by shallower ducts (6m ≈ 0.49, 70cm ≈ 2.1, 23cm ≈ 4.3).
+- **Defaults by region:** `getDefaultBandsForGrid()` works out the ITU region from your Maidenhead locator (using the region boundary lines A, B and C, with the former-USSR and Mongolia rule) and picks the bands allocated there. Region 1 gets 4m; Region 2 gets 1.25m; microwaves are opt-in everywhere.
+- **Settings → Tropo bands:** shows your region and lets you switch any band on or off, including the collapsed microwave group, with a reset to your region's defaults. Only changes from the default are saved.
+- **Live checks follow your bands.** Every band switched on gets its own "Live … spots" reading from the shared PSKReporter query (still one query, reused for 5 minutes); bands switched off aren't checked. Readings for 4m, 1.25m, 23cm and the microwave bands appear under the ALL waveband button.
+  - Each band is judged in its terrestrial weak-signal segment (e.g. 432–433 MHz, 1296 MHz, 2320/2304 MHz, 10368 MHz), which keeps out FM, repeaters and the QO-100 satellite on 13cm and 3cm.
+  - Thresholds suit each band: 2m still needs a cluster (aircraft scatter reaches 700–800 km); 70cm, 1.25m and 23cm need fewer paths; microwaves count a single 400 km+ path. 6m and 4m also watch for sporadic E, and 6m for multi-hop DX.
+  - Paths now count when either end is within 800 km of **your station** (Es: 1500 km), instead of the old fixed UK/Benelux box, so the live checks work anywhere. The 2m Es season is mirrored for the southern hemisphere.
+  - The tropo forecast names the chosen bands a duct favours most, using the duct sensitivity factor. Its model paths are still the North Sea ones from eastern England.
+- Unit tests for the band table, region lookup (30 places worldwide), the spot rules and overrides run on every build.
+
 ## What's new in v5.7
 
 - The **station log** (map, location details and Check my location) now sits at the top of the lid, above the DX log, instead of down in Settings. The coordinate boxes stay in Settings.
