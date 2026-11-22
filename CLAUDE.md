@@ -34,3 +34,5 @@ The whole app must feel like **warm, old radio equipment in used condition** —
   `app/src/test`; they can be run locally with a plain Kotlin/JVM Gradle project.
 - Preview custom-drawn UI with a browser canvas mock (same geometry) before pushing.
 - Watch for name clashes in the single `uk.dx.propwatch` package (e.g. `Station`).
+- Versioning: `versionName` stays "1.0" until the user says otherwise; only the build
+  number (`versionCode` = CI run number) changes.
