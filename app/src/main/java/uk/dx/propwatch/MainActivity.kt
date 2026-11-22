@@ -30,12 +30,10 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var results: LinearLayout
     private lateinit var checkBtn: Button
-    // Front panel parts: the portable cabinet uses the first three, the receiver the last.
+    // Front panel parts.
     private var dial: DialView? = null
     private var bandPlate: BandPlateView? = null
     private var tonePlate: TonePlateView? = null
-    private var receiver: FrontPanel? = null          // receiver or aircraft drawn panel
-    private var aircraft: AircraftPanelView? = null
     private lateinit var tropoBox: LinearLayout
     private lateinit var moodLight: MoodLightView
     private lateinit var contentRoot: View
@@ -63,7 +61,6 @@ class MainActivity : Activity() {
         if (ask.isNotEmpty() && savedInstanceState == null) requestPermissions(ask.toTypedArray(), REQ_STARTUP)
         PropWorker.schedule(this)
         Sfx.init(this)
-        Radio.skin = Store.skin(this)
         Mood.on = Store.moodLight(this)
 
         val root = LinearLayout(this).apply {
@@ -71,11 +68,7 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(16), dp(16), dp(32))
         }
 
-        when (Radio.skin) {
-            Radio.Skin.RECEIVER -> buildReceiverFront(root)
-            Radio.Skin.AIRCRAFT -> buildAircraftFront(root)
-            else -> buildPortableFront(root)
-        }
+        buildFront(root)
 
         // The open lid: log chart, readings, sources and settings on a black instruction panel.
         val lid = LinearLayout(this).apply {
@@ -123,16 +116,6 @@ class MainActivity : Activity() {
         refreshTropoBands()
 
         lid.addView(section("Settings"))
-        lid.addView(label("Cabinet"))
-        for ((skin, name) in listOf(Radio.Skin.PORTABLE to "1940s portable", Radio.Skin.RECEIVER to "Communications receiver",
-                Radio.Skin.AIRCRAFT to "WW2 aircraft wireless")) {
-            lid.addView(radioButton((if (Radio.skin == skin) "● " else "○ ") + name) {
-                if (Radio.skin != skin) {
-                    Store.saveSkin(this, skin)
-                    recreate()   // rebuild the whole screen in the new cabinet
-                }
-            })
-        }
         val st = Store.station(this)
         val lat = number("Latitude", "%.4f".format(java.util.Locale.US, st.lat)).also { latField = it }
         val lon = number("Longitude", "%.4f".format(java.util.Locale.US, st.lon)).also { lonField = it }
@@ -211,13 +194,12 @@ class MainActivity : Activity() {
             // The dial lamps warm up and a fresh check starts every time the app opens,
             // with the same valve warm-up sound as pressing Check now.
             dial?.warmUp(level(report))
-            receiver?.warmUp(Bands.level(report?.findings.orEmpty(), Store.band(this)), kp(report))
             checkNow()
         }
     }
 
     /** The 1940s portable: handle, grille and tone plate, dial, waveband plate, readout, main button. */
-    private fun buildPortableFront(root: LinearLayout) {
+    private fun buildFront(root: LinearLayout) {
         // Carrying handle, then the case front: grille and tone plate, dial, band plate, readout, main button.
         root.addView(HandleView(this))
         val front = LinearLayout(this).apply {
@@ -270,163 +252,6 @@ class MainActivity : Activity() {
         checkBtn = radioButton("Check now", silent = true) { checkNow() }
         front.addView(checkBtn)
         root.addView(front)
-    }
-
-    /**
-     * The communications receiver: speaker cabinet on top, then the receiver's crackle
-     * front panel (dials, meters, nameplate, working knobs and toggles), readout and button.
-     */
-    private fun buildReceiverFront(root: LinearLayout) {
-        root.addView(SpeakerCabinetView(this))
-        root.addView(View(this).apply {   // the cabinet's top lip
-            background = Radio.tile(this@MainActivity, Radio.greyCrackle)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(12))
-        })
-        val front = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = Radio.tile(this@MainActivity, Radio.blackCrackle)
-            setPadding(0, 0, 0, dp(14))
-        }
-        val panel = ReceiverPanelView(this).apply {
-            bands = BAND_KEYS.map { k -> if (k == "all") "ALL" else Bands.ALL.first { it.first == k }.second }
-            selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
-            toggles = toneSwitches()
-            onCheck = { checkNow() }
-            onSelect = { i ->
-                Sfx.detent(this@MainActivity)
-                Store.saveBand(this@MainActivity, BAND_KEYS[i])
-                render(Store.loadReport(this@MainActivity), animateNeedle = true)
-            }
-            onToggle = { i, on -> toggle(i, on) }
-            mood = Mood.on
-            onMood = { on -> setMood(on) }
-        }
-        receiver = panel
-        front.addView(panel)
-        status = TextView(this).apply {
-            textSize = 15f; typeface = Radio.MONO; setTextColor(Radio.CREAM)
-            gravity = Gravity.CENTER; setPadding(dp(12), dp(4), dp(12), dp(10))
-        }
-        front.addView(status)
-        checkBtn = radioButton("Check now", silent = true) { checkNow() }.apply {
-            (layoutParams as LinearLayout.LayoutParams).setMargins(dp(14), dp(4), dp(14), dp(4))
-        }
-        front.addView(checkBtn)
-        root.addView(front)
-    }
-
-    /**
-     * The WW2 aircraft wireless set: one drawn panel (meters, semicircular dial, big
-     * knurled knob, station record, coloured levers, band switch), then readout and button.
-     */
-    private fun buildAircraftFront(root: LinearLayout) {
-        val front = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = Radio.tile(this@MainActivity, Radio.blackEnamel)
-            setPadding(0, 0, 0, dp(14))
-        }
-        val panel = AircraftPanelView(this).apply {
-            bands = BAND_KEYS.map { k -> if (k == "all") "ALL" else Bands.ALL.first { it.first == k }.second }
-            selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
-            toggles = toneSwitches()
-            record = stationRecord()
-            onCheck = { checkNow() }
-            onSelect = { i ->
-                Sfx.detent(this@MainActivity)
-                Store.saveBand(this@MainActivity, BAND_KEYS[i])
-                render(Store.loadReport(this@MainActivity), animateNeedle = true)
-            }
-            onToggle = { i, on -> toggle(i, on) }
-            mood = Mood.on
-            onMood = { on -> setMood(on) }
-        }
-        receiver = panel
-        aircraft = panel
-        front.addView(panel)
-        status = TextView(this).apply {
-            textSize = 15f; typeface = Radio.MONO; setTextColor(Radio.CREAM)
-            gravity = Gravity.CENTER; setPadding(dp(12), dp(4), dp(12), dp(10))
-        }
-        front.addView(status)
-        checkBtn = radioButton("Check now", silent = true) { checkNow() }.apply {
-            (layoutParams as LinearLayout.LayoutParams).setMargins(dp(14), dp(4), dp(14), dp(4))
-        }
-        front.addView(checkBtn)
-        root.addView(front)
-    }
-
-    /** Lines for the aircraft set's station-record card. */
-    private fun stationRecord(): List<String> {
-        val st = Store.station(this)
-        return listOf("LOCATOR ${Geo.latLonToLoc(st.lat, st.lon).uppercase()}",
-            "BUILD ${Updater.currentBuild(this)}", "TYPE PW-44")
-    }
-
-    // ---- Tropo band settings ----
-
-    /**
-     * Rebuilds the Tropo bands section: the station's ITU region, a toggle for each core
-     * band, the microwave group (collapsed until opened) and a reset to the regional
-     * defaults. Only choices that differ from the default are stored.
-     */
-    private fun refreshTropoBands() {
-        tropoBox.removeAllViews()
-        val grid = Store.stationGrid(this)
-        val region = TropoBands.ituRegionForGrid(grid)
-        val defaults = TropoBands.getDefaultBandsForGrid(grid).map { it.id }.toSet()
-        val overrides = Store.tropoBandOverrides(this)
-        val visible = TropoBands.resolveVisibleBands(grid, overrides).map { it.id }.toSet()
-        tropoBox.addView(TextView(this).apply {
-            textSize = 14f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.9f; setPadding(0, dp(2), 0, dp(6))
-            text = "ITU REGION ${region?.number ?: "?"} · LOCATOR ${grid.uppercase()}\n" +
-                "Live checks cover the bands switched on here. Defaults follow your region."
-        })
-        for (b in TropoBands.CORE) tropoBox.addView(bandToggle(b, region, b.id in visible, b.id in defaults))
-        val shownMw = TropoBands.MICROWAVE.count { it.id in visible }
-        tropoBox.addView(radioButton((if (microwaveOpen) "▾ " else "▸ ") + "Microwave bands" +
-                if (shownMw > 0) " ($shownMw shown)" else "") {
-            microwaveOpen = !microwaveOpen
-            refreshTropoBands()
-        })
-        if (microwaveOpen) for (b in TropoBands.MICROWAVE) tropoBox.addView(bandToggle(b, region, b.id in visible, b.id in defaults))
-        if (overrides.isNotEmpty()) tropoBox.addView(radioButton("Reset to Region ${region?.number ?: ""} defaults") {
-            Store.clearTropoBandOverrides(this)
-            refreshTropoBands()
-        })
-    }
-
-    /** One band: lamp, label and frequency, with its allocation underneath. Tapping flips it. */
-    private fun bandToggle(b: TropoBand, region: ItuRegion?, on: Boolean, isDefault: Boolean): View {
-        val freq = if (b.frequencyMHz >= 1000) "%.1f GHz".format(java.util.Locale.US, b.frequencyMHz / 1000)
-            else "%.0f MHz".format(java.util.Locale.US, b.frequencyMHz)
-        val note = when {
-            region != null && region !in b.ituRegions -> "Not allocated in Region ${region.number}. " + b.allocationNote
-            b.nationalOnly -> "National allocations only. " + b.allocationNote
-            else -> b.allocationNote
-        }
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = Radio.buttonBg(this@MainActivity, big = false)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(4)) }
-            addView(TextView(context).apply {
-                text = (if (on) "●  " else "○  ") + "${b.label}  ·  $freq" + if (on == isDefault) "" else "   (changed)"
-                textSize = 17f; typeface = Radio.SERIF
-                setTextColor(if (on) Radio.LAMP_ALERT else Radio.CREAM)
-            })
-            addView(TextView(context).apply {
-                text = note; textSize = 13f; setTextColor(Radio.CREAM); alpha = 0.75f; setPadding(0, dp(2), 0, 0)
-            })
-            isClickable = true
-            setOnClickListener {
-                Sfx.click(this@MainActivity)
-                val now = !on
-                // Store only a real change from the default; flipping back forgets the choice.
-                Store.setTropoBandOverride(this@MainActivity, b.id, if (now == isDefault) null else now)
-                refreshTropoBands()
-            }
-        }
     }
 
     // ---- Styled widgets ----
@@ -588,32 +413,10 @@ class MainActivity : Activity() {
         letterSpacing = if (pill) 0.3f else 0.22f
         gravity = Gravity.CENTER
         setPadding(dp(8), dp(if (pill) 5 else 3), dp(8), dp(if (pill) 5 else 3))
-        if (Radio.aircraft) {
-            // Aircraft set: black capitals engraved on a brass label plate.
-            text = t.uppercase()
-            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-            setTextColor(Color.rgb(0x15, 0x12, 0x0C))
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Radio.PLATE_LIGHT, Radio.PLATE, Radio.PLATE_DARK)).apply { cornerRadius = dp(2).toFloat() }
-        } else if (Radio.receiver) {
-            // Receiver: white engraved capitals between red chevrons, like its nameplate.
-            val label = "›››  ${t.uppercase()}  ‹‹‹"
-            text = android.text.SpannableString(label).apply {
-                val red = Radio.PANEL_RED
-                setSpan(android.text.style.ForegroundColorSpan(red), 0, 3, 0)
-                setSpan(android.text.style.ForegroundColorSpan(red), label.length - 3, label.length, 0)
-            }
-            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-            setTextColor(Radio.CREAM)
-            background = GradientDrawable().apply {
-                setColor(Color.TRANSPARENT); cornerRadius = dp(4).toFloat(); setStroke(dp(1), Color.argb(0x80, 0xEC, 0xE8, 0xDC))
-            }
-        } else {
-            text = t.uppercase(); typeface = Radio.SERIF
-            setTextColor(Radio.INK)
-            background = GradientDrawable().apply {
-                setColor(Radio.CREAM); cornerRadius = dp(if (pill) 14 else 1).toFloat()
-            }
+        text = t.uppercase(); typeface = Radio.SERIF
+        setTextColor(Radio.INK)
+        background = GradientDrawable().apply {
+            setColor(Radio.CREAM); cornerRadius = dp(if (pill) 14 else 1).toFloat()
         }
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, if (first) 0 else dp(20), 0, dp(8)) }
@@ -639,11 +442,6 @@ class MainActivity : Activity() {
 
     /** Needle position for the selected waveband: 0 quiet, 1 heads-up, 2 open. */
     private fun level(r: Report?): Int = Bands.level(r?.findings.orEmpty(), Store.band(this)).coerceAtLeast(0)
-
-    /** Latest planetary K index from the aurora reading ("Kp 3.67 …"), for the receiver's Kp meter. */
-    private fun kp(r: Report?): Float? = r?.findings?.firstOrNull { it.mode == "Aurora" }?.let { f ->
-        Regex("Kp (\\d+(?:\\.\\d+)?)").find(f.headline + " " + f.detail)?.groupValues?.get(1)?.toFloatOrNull()
-    }
 
     /** The readings for the selected waveband button. */
     private fun shown(r: Report?): List<Finding> {
@@ -672,7 +470,6 @@ class MainActivity : Activity() {
         Store.saveMoodLight(this, on)
         Mood.on = on
         tonePlate?.mood = on
-        receiver?.mood = on
         Mood.styleText(contentRoot, resources.displayMetrics.density)
         Mood.invalidateAll(contentRoot)
         moodLight.set(on)
@@ -699,14 +496,13 @@ class MainActivity : Activity() {
 
     /**
      * Runs every check in the background, with the valve warm-up sound. Used by the
-     * Check now button, the receiver's vernier knob and the automatic check at startup.
+     * Check now button and the automatic check at startup.
      */
     private fun checkNow() {
         if (!checkBtn.isEnabled) return   // a check is already running
         Sfx.tuneIn(this)
         checkBtn.isEnabled = false
         checkBtn.text = "Tuning…"
-        receiver?.setChecking(true)
         if (Store.useGps(this)) Locator.lastKnown(this)?.let { useFix(it) }
         val station = Store.station(this)
         Thread {
@@ -716,7 +512,6 @@ class MainActivity : Activity() {
             runOnUiThread {
                 checkBtn.isEnabled = true
                 checkBtn.text = "Check now"
-                receiver?.setChecking(false)
                 render(r, animateNeedle = true)
             }
         }.start()
@@ -773,9 +568,8 @@ class MainActivity : Activity() {
         append(" · ").append(Checker.localTime(l.time).uppercase())
     }
 
-    /** Puts the saved station on the lit screen (and the aircraft set's record card). */
+    /** Puts the saved station on the lit screen. */
     private fun showStation(animate: Boolean = false) {
-        aircraft?.record = stationRecord()
         if (::tropoBox.isInitialized) refreshTropoBands()   // the ITU region follows the station
         if (locating) return
         val st = Store.station(this)
@@ -906,10 +700,8 @@ class MainActivity : Activity() {
     private fun render(r: Report?, animateNeedle: Boolean) {
         results.removeAllViews()
         bandPlate?.rows = bandRows(r)
-        receiver?.bandLamps = bandRows(r).map { it.lamp }
         logChart.entries = Store.history(this)
         if (animateNeedle) dial?.setLevel(level(r))
-        receiver?.show(Bands.level(r?.findings.orEmpty(), Store.band(this)), kp(r), animateNeedle)
         if (r == null) {
             status.text = "NO READINGS YET — PRESS CHECK NOW"
             return

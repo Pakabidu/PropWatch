@@ -4,9 +4,10 @@ An Android app that runs the same checks as your scheduled task every few hours 
 
 ## What's new in v6.0
 
-- **Mood light.** One of the two spare sockets beside the speaker is now a **MOOD LIGHT** knob (on the receiver it replaces the TONE knob; on the aircraft set, the red AERIAL knob). Turn it on and the room goes dark around a table lamp just off the top corner: the dials, meters, jewel lamps and pilot lamps glow warm orange and the button lettering lights up amber. It fades in and out and is remembered.
+- **Mood light.** One of the two spare sockets beside the speaker is now a **MOOD LIGHT** knob. Turn it on and the room goes dark around a table lamp just off the top corner: the dials, meters, jewel lamps and pilot lamps glow warm orange and the button lettering lights up amber. It fades in and out and is remembered.
 - **Bigger, older switches.** SOUND, MONITOR and GPS are big bakelite rockers in chrome escutcheons with a jewel lamp each, thumb-polished on the side you press, with the lettering rubbed thin.
-- **A radio that's been used, not just an old one.** Scratches, scuffs and grime on every panel; chrome worn through to brass on the dial bezel; plating rubbed back to bare metal on the plates; rust round the screws; dusty speaker cloth; yellowed, dusty dial glass; chipped paint on the receiver and aircraft panels; a coffee ring on the lid and on the log card; a creased, folded station chart; thumb-worn buttons with nicks in their rims.
+- **A radio that's been used, not just an old one.** Scratches, scuffs and grime on every panel; chrome worn through to brass on the dial bezel; plating rubbed back to bare metal on the plates; rust round the screws; dusty speaker cloth; yellowed, dusty dial glass; a coffee ring on the lid and on the log card; a creased, folded station chart; thumb-worn buttons with nicks in their rims.
+- **One cabinet.** The communications-receiver and WW2 aircraft-wireless cabinets (v5.3, v5.6) have been removed, along with Settings → Cabinet; PropWatch is the 1940s portable again. The Check my location sound stays.
 
 ## What's new in v5.9
 

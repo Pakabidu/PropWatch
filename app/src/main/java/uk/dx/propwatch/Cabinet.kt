@@ -517,7 +517,7 @@ class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
         c.drawRoundRect(inner, 16 * d, 16 * d, glare)
         // Old glass: faintly yellowed, dusty, with a couple of long scratches.
         c.save(); c.clipRect(inner)
-        fill.color = Color.argb(if (Radio.receiver) 0 else 18, 0xD8, 0xB0, 0x50); c.drawRect(inner, fill)
+        fill.color = Color.argb(18, 0xD8, 0xB0, 0x50); c.drawRect(inner, fill)
         if (Mood.on) {   // the dial lamp turned up in the dark: a warm wash over the glass
             fill.color = Color.argb(40, 0xFF, 0x9A, 0x3C); c.drawRect(inner, fill)
         }
@@ -640,7 +640,7 @@ class BandPlateView(ctx: Context) : CabinetView(ctx), MoodGlow {
  * across, marking every check: green open, amber heads-up, a dash for quiet,
  * a red cross where the band couldn't be checked.
  */
-class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
+class LogChartView(ctx: Context) : CabinetView(ctx) {
     var entries: List<Store.LogEntry> = emptyList()
         set(v) { field = v; invalidate() }
 
@@ -648,8 +648,6 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private val paper = paint(Radio.PAPER)
     private val paperRect = RectF()
 
-    /** The receiver's chart is backlit amber, so it glows in the dark. */
-    override fun glows(): List<Glow> = if (Radio.receiver) listOf(Glow(RectF(paperRect), Mood.AMBER, 0.6f, screen = true)) else emptyList()
     private val speck = paint()
     private val fine = paint(Color.argb(0x73, 0xA0, 0x82, 0x50)) { strokeWidth = 0.5f * d }
     private val bold = paint(Color.argb(0xCC, 0x5A, 0x46, 0x28)) { strokeWidth = 0.9f * d }
@@ -674,9 +672,6 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
         setMeasuredDimension(MeasureSpec.getSize(w), (head + Bands.ALL.size * rowH + keyH).toInt())
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
-        // On the receiver the chart is backlit amber, like its dials.
-        paper.shader = if (Radio.receiver) RadialGradient(w / 2f, h * 0.9f, w * 0.8f,
-            intArrayOf(Radio.AMBER_LIGHT, Radio.AMBER, Radio.AMBER_DARK), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP) else null
         val r = kotlin.random.Random(11)
         specks.clear()
         repeat((w * h / (30 * d * d)).toInt().coerceAtMost(900)) {
@@ -698,9 +693,6 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
         for (s in specks) {
             speck.color = Color.argb((s[3] * 255).toInt(), 0x96, 0x78, 0x46)
             c.drawCircle(gx + s[0] * gw, gy + s[1] * gh, s[2], speck)
-        }
-        if (Radio.aircraft) {   // a ruled log card: blue fine lines, red bold rules
-            fine.color = Color.argb(0x90, 0x8A, 0xA0, 0xC8); bold.color = Color.argb(0xCC, 0xC8, 0x50, 0x50)
         }
         for (k in 0..48) c.drawLine(gx + gw * k / 48, gy, gx + gw * k / 48, gy + gh, fine)
         for (k in 0..Bands.ALL.size * 2) c.drawLine(gx, gy + gh * k / (Bands.ALL.size * 2), gx + gw, gy + gh * k / (Bands.ALL.size * 2), fine)
@@ -775,10 +767,9 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private val mapRect = RectF()
     private val crease = paint { strokeWidth = 0.8f * d }
 
-    /** The receiver's backlit amber chart glows; so does the red station pin. */
+    /** The red station pin glows in the dark. */
     override fun glows(): List<Glow> {
         val out = ArrayList<Glow>()
-        if (Radio.receiver) out += Glow(RectF(mapRect), Mood.AMBER, 0.6f, screen = true)
         if (!pinLat.isNaN() && !locating) {
             val x = mapX(pinLon); val y = mapY(pinLat)
             out += Glow(RectF(x - 5 * d, y - 5 * d, x + 5 * d, y + 5 * d), Color.rgb(0xFF, 0x50, 0x30), 0.7f)
@@ -823,35 +814,15 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
         val w = width.toFloat()
         val cream = Radio.mix(Color.rgb(0x40, 0x3B, 0x33), Radio.CREAM, glow)
         // Title ribbon, like the lid's nameplate band.
-        ribbon.shader = if (Radio.aircraft) LinearGradient(0f, 0f, w, ribbonH,   // brass label plate
-            intArrayOf(Radio.PLATE_LIGHT, Radio.PLATE, Radio.PLATE_DARK), null, Shader.TileMode.CLAMP) else null
         c.drawRoundRect(0f, 0f, w, ribbonH, 2 * d, 2 * d, ribbon)
         c.drawText("STATION LOG", w / 2, ribbonH / 2 + ribbonText.textSize * 0.36f, ribbonText)
 
-        // World chart: cream continents on black (portable), or dark continents on a
-        // backlit amber chart (receiver).
-        if (Radio.aircraft) {
-            // Navigator's chart: white card, blue graticule, grey land with black coastlines.
-            sea.shader = null; sea.color = Color.rgb(0xF4, 0xF1, 0xE6)
-            c.drawRect(mapRect, sea)
-            grid.color = Color.argb(0x90, 0x5E, 0x8F, 0xC8)
-            land.color = Radio.mix(Color.rgb(0x9A, 0x96, 0x8A), Color.rgb(0xD6, 0xD0, 0xC0), glow)
-            coast.color = Radio.INK
-        } else if (Radio.receiver) {
-            sea.shader = RadialGradient(mapRect.centerX(), mapRect.bottom, mapRect.width() * 0.75f,
-                intArrayOf(Radio.mix(Color.rgb(0x50, 0x38, 0x18), Radio.AMBER_LIGHT, glow), Radio.mix(Color.rgb(0x3A, 0x26, 0x10), Radio.AMBER, glow),
-                    Radio.mix(Color.rgb(0x20, 0x14, 0x08), Radio.AMBER_DARK, glow)), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
-            c.drawRect(mapRect, sea)
-            grid.color = Color.argb(0x60, 0x2A, 0x16, 0x06)
-            land.color = Color.argb(0xD0, 0x3A, 0x22, 0x0C)
-            coast.color = Radio.DIAL_INK
-        } else {
-            sea.shader = null; sea.color = Color.rgb(0x0B, 0x0A, 0x09)
-            c.drawRect(mapRect, sea)
-            grid.color = Radio.mix(Color.rgb(0x1E, 0x1B, 0x17), Color.rgb(0x3A, 0x34, 0x2A), glow)
-            land.color = Radio.mix(Color.rgb(0x3A, 0x35, 0x2C), Color.rgb(0xD8, 0xCB, 0xA6), glow)
-            coast.color = Radio.mix(Color.rgb(0x50, 0x48, 0x3A), Radio.CREAM, glow)
-        }
+        // World chart: cream continents on black.
+        sea.shader = null; sea.color = Color.rgb(0x0B, 0x0A, 0x09)
+        c.drawRect(mapRect, sea)
+        grid.color = Radio.mix(Color.rgb(0x1E, 0x1B, 0x17), Color.rgb(0x3A, 0x34, 0x2A), glow)
+        land.color = Radio.mix(Color.rgb(0x3A, 0x35, 0x2C), Color.rgb(0xD8, 0xCB, 0xA6), glow)
+        coast.color = Radio.mix(Color.rgb(0x50, 0x48, 0x3A), Radio.CREAM, glow)
         for (lon in -150..150 step 30) c.drawLine(mapX(lon.toDouble()), mapRect.top, mapX(lon.toDouble()), mapRect.bottom, grid)
         for (lat in -30..60 step 30) c.drawLine(mapRect.left, mapY(lat.toDouble()), mapRect.right, mapY(lat.toDouble()), grid)
         c.save(); c.clipRect(mapRect)
@@ -869,7 +840,7 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
         c.restore()
         // A chart that's been folded and unfolded many times: crease lines and grubby edges.
         c.save(); c.clipRect(mapRect)
-        crease.color = if (Radio.receiver || Radio.aircraft) Color.argb(40, 0, 0, 0) else Color.argb(36, 255, 255, 255)
+        crease.color = Color.argb(36, 255, 255, 255)
         for (f in listOf(1f / 3, 2f / 3)) c.drawLine(mapRect.left + mapRect.width() * f, mapRect.top, mapRect.left + mapRect.width() * f, mapRect.bottom, crease)
         c.drawLine(mapRect.left, mapRect.centerY(), mapRect.right, mapRect.centerY(), crease)
         Wear.grime(c, mapRect, d, depth = 10f, alpha = 50)
