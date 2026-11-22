@@ -180,10 +180,11 @@ class MainActivity : Activity() {
         val report = Store.loadReport(this)
         render(report, animateNeedle = false)
         if (savedInstanceState == null) {
-            // Silent warm-up of the dial lamps, then a fresh check every time the app opens.
+            // The dial lamps warm up and a fresh check starts every time the app opens,
+            // with the same valve warm-up sound as pressing Check now.
             dial?.warmUp(level(report))
             receiver?.warmUp(Bands.level(report?.findings.orEmpty(), Store.band(this)), kp(report))
-            checkNow(fromUser = false)
+            checkNow()
         }
     }
 
@@ -236,7 +237,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(10))
         }
         front.addView(status)
-        checkBtn = radioButton("Check now", silent = true) { checkNow(fromUser = true) }
+        checkBtn = radioButton("Check now", silent = true) { checkNow() }
         front.addView(checkBtn)
         root.addView(front)
     }
@@ -260,7 +261,7 @@ class MainActivity : Activity() {
             bands = BAND_KEYS.map { k -> if (k == "all") "ALL" else Bands.ALL.first { it.first == k }.second }
             selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
             toggles = toneSwitches()
-            onCheck = { checkNow(fromUser = true) }
+            onCheck = { checkNow() }
             onSelect = { i ->
                 Sfx.detent(this@MainActivity)
                 Store.saveBand(this@MainActivity, BAND_KEYS[i])
@@ -275,7 +276,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER; setPadding(dp(12), dp(4), dp(12), dp(10))
         }
         front.addView(status)
-        checkBtn = radioButton("Check now", silent = true) { checkNow(fromUser = true) }.apply {
+        checkBtn = radioButton("Check now", silent = true) { checkNow() }.apply {
             (layoutParams as LinearLayout.LayoutParams).setMargins(dp(14), dp(4), dp(14), dp(4))
         }
         front.addView(checkBtn)
@@ -529,12 +530,12 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Runs every check in the background. [fromUser]: pressed Check now (or the receiver's
-     * vernier knob), so the valve warm-up sound plays; the automatic check at startup is silent.
+     * Runs every check in the background, with the valve warm-up sound. Used by the
+     * Check now button, the receiver's vernier knob and the automatic check at startup.
      */
-    private fun checkNow(fromUser: Boolean) {
+    private fun checkNow() {
         if (!checkBtn.isEnabled) return   // a check is already running
-        if (fromUser) Sfx.tuneIn(this)
+        Sfx.tuneIn(this)
         checkBtn.isEnabled = false
         checkBtn.text = "Tuning…"
         receiver?.setChecking(true)
