@@ -25,7 +25,7 @@ import kotlin.math.sin
  * a long press (used to change the custom station).
  */
 class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
-    var stations: List<Station> = emptyList()
+    var stations: List<RadioStation> = emptyList()
         set(v) { field = v; invalidate() }
     var onPress: ((Int) -> Unit)? = null
     var onLongPress: ((Int) -> Unit)? = null
@@ -166,7 +166,7 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
         state = s; playing = index
         flicker?.cancel(); flicker = null
         val target = if (index in 0..2 && s != StreamService.State.OFF) positions[index] else 0f
-        if (isLaidOut && needle != target) animate(needle, target, if (wasOff) 900 else 500, 0, OvershootInterpolator(0.8f)) { needle = it }
+        if (isLaidOut && needle != target) animate(needle, target, if (wasOff) 900L else 500L, 0L, OvershootInterpolator(0.8f)) { needle = it }
         else needle = target
         when (s) {
             StreamService.State.TUNING -> {   // the valves warming up: an uneven, rising glow

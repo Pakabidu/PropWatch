@@ -22,16 +22,16 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 
 /** A station on the little broadcast set: what's printed on its button, and where it streams from. */
-data class Station(val name: String, val label: String, val url: String?)
+data class RadioStation(val name: String, val label: String, val url: String?)
 
 /** The broadcast set's stations: two old-time stations and one the user sets up. */
 object Stations {
     const val CUSTOM = 2
 
-    fun all(ctx: Context): List<Station> = listOf(
-        Station("The 1920s Radio Network", "1920s", "http://65.108.124.70:8181/stream"),
-        Station("Old Time Radio Service", "OLD TIME", "http://65.108.105.26:8516/stream"),
-        Station(Store.customStationName(ctx) ?: "My station", "MY STATION", Store.customStationUrl(ctx)),
+    fun all(ctx: Context): List<RadioStation> = listOf(
+        RadioStation("The 1920s Radio Network", "1920s", "http://65.108.124.70:8181/stream"),
+        RadioStation("Old Time Radio Service", "OLD TIME", "http://65.108.105.26:8516/stream"),
+        RadioStation(Store.customStationName(ctx) ?: "My station", "MY STATION", Store.customStationUrl(ctx)),
     )
 
     /** A stream address worth trying: http or https with a host. */
@@ -70,7 +70,7 @@ class StreamService : Service() {
             listeners.toList().forEach { it() }
         }
 
-        fun play(ctx: Context, index: Int, s: Station) {
+        fun play(ctx: Context, index: Int, s: RadioStation) {
             val url = s.url ?: return
             set(State.TUNING, index)
             ContextCompat.startForegroundService(ctx, Intent(ctx, StreamService::class.java)
