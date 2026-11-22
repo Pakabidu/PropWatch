@@ -14,13 +14,14 @@ object Sfx {
     private var click = 0
     private var detent = 0
     private var startup = 0
+    private var locate = 0
     private val loaded = mutableSetOf<Int>()
     private var pendingStartup = false
 
     fun init(ctx: Context) {
         if (pool != null) return
         val p = SoundPool.Builder()
-            .setMaxStreams(3)
+            .setMaxStreams(4)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
@@ -40,6 +41,7 @@ object Sfx {
         click = p.load(app, R.raw.click, 1)
         detent = p.load(app, R.raw.detent, 1)
         startup = p.load(app, R.raw.startup, 1)
+        locate = p.load(app, R.raw.locate, 1)
         pool = p
     }
 
@@ -50,6 +52,9 @@ object Sfx {
 
     fun click(ctx: Context) = play(ctx, click, 1f)
     fun detent(ctx: Context) = play(ctx, detent, 0.8f)
+
+    /** Check my location: a direction-finding sweep through the null, then "QTH?" in Morse. */
+    fun locate(ctx: Context) = play(ctx, locate, 0.85f)
 
     /** The valve warm-up, played whenever a check starts. Plays once the sample has loaded (it may still be loading just after launch). */
     fun tuneIn(ctx: Context) {

@@ -2,6 +2,16 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v5.6
+
+- **Third cabinet: WW2 aircraft wireless** (Settings → Cabinet), modelled on the RAF bomber receiver and transmitter pair (original artwork; type and serial markings are PropWatch's own):
+  - Black stove-enamel panel with slotted screws, chrome grab handles and engraved brass label plates.
+  - Two square brass-bezel meters (**signal strength** and **Kp index**) with a green **tuning eye** between them whose dark wedge closes as conditions open.
+  - A cream semicircular dial with colour-coded HF, 6m, 2m and 70cm scales and a condition scale, read by a hairline pointer. The big knurled knob below it runs **Check now** and turns while checking.
+  - A **station record** card (locator, build, type), colour-coded **lever switches** for SOUND (blue), MONITOR (red) and GPS (yellow), and a **band switch** with coloured sectors between the red AERIAL and yellow ANODE knobs (those two are for show).
+  - Brass-plate headings, a ruled white log card and a navigator's chart for the station log.
+- **Check my location has its own sound** in every cabinet: a direction-finding sweep through the null, then "QTH?" (what is your location?) in Morse.
+
 ## What's new in v5.5
 
 - The automatic check when the app opens now plays the same valve warm-up sound as Check now, as the dial lamps warm up.

@@ -28,14 +28,29 @@ object Radio {
      * communications receiver: black crackle panel, amber backlit dials, chrome trim.
      * Chosen in Settings; the activity is recreated when it changes.
      */
-    enum class Skin { PORTABLE, RECEIVER }
+    enum class Skin { PORTABLE, RECEIVER, AIRCRAFT }
     var skin = Skin.PORTABLE
     val receiver get() = skin == Skin.RECEIVER
+    /** WW2 aircraft wireless set: black panel, cream semicircular dial, brass label plates, colour-coded controls. */
+    val aircraft get() = skin == Skin.AIRCRAFT
 
     val LEATHER = Color.rgb(0x16, 0x13, 0x11)
-    val PANEL get() = if (receiver) Color.rgb(0x0C, 0x0D, 0x10) else Color.rgb(0x0E, 0x0D, 0x0C)   // lid panel
-    /** Scale and label accent: gold on the portable, warm amber on the receiver. */
-    val GOLD get() = if (receiver) Color.rgb(0xF2, 0xA8, 0x48) else Color.rgb(0xD9, 0xB5, 0x6A)
+    val PANEL get() = when (skin) {   // lid panel
+        Skin.RECEIVER -> Color.rgb(0x0C, 0x0D, 0x10); Skin.AIRCRAFT -> Color.rgb(0x13, 0x13, 0x13); else -> Color.rgb(0x0E, 0x0D, 0x0C)
+    }
+    /** Scale and label accent: gold on the portable, warm amber on the receiver, brass on the aircraft set. */
+    val GOLD get() = when (skin) {
+        Skin.RECEIVER -> Color.rgb(0xF2, 0xA8, 0x48); Skin.AIRCRAFT -> Color.rgb(0xD9, 0xB3, 0x6A); else -> Color.rgb(0xD9, 0xB5, 0x6A)
+    }
+    // Aircraft set: brass plates and colour-coded controls.
+    val PLATE_LIGHT = Color.rgb(0xE6, 0xC8, 0x77)
+    val PLATE = Color.rgb(0xA8, 0x82, 0x3A)
+    val PLATE_DARK = Color.rgb(0x6E, 0x54, 0x20)
+    val CODE_BLUE = Color.rgb(0x5E, 0x8F, 0xC8)
+    val CODE_RED = Color.rgb(0xD8, 0x34, 0x2A)
+    val CODE_YELLOW = Color.rgb(0xF2, 0xC2, 0x1E)
+    val CODE_ORANGE = Color.rgb(0xE8, 0x86, 0x2A)
+    val DIAL_CREAM = Color.rgb(0xF6, 0xEE, 0xD2)
     val BRASS get() = GOLD
     val AMBER = Color.rgb(0xF0, 0xA0, 0x3A)           // receiver dial backlight
     val AMBER_LIGHT = Color.rgb(0xFF, 0xD2, 0x7A)
@@ -46,8 +61,12 @@ object Radio {
     val CHROME = Color.rgb(0xC8, 0xC8, 0xC2)
     val CHROME_DARK = Color.rgb(0x6E, 0x6E, 0x68)
     /** Engraved lettering: cream on the portable, white on the receiver's black crackle. */
-    val CREAM get() = if (receiver) Color.rgb(0xEC, 0xE8, 0xDC) else Color.rgb(0xF0, 0xE4, 0xC4)
-    val PAPER get() = if (receiver) AMBER_LIGHT else Color.rgb(0xE8, 0xDC, 0xB8)   // log-chart paper
+    val CREAM get() = when (skin) {
+        Skin.RECEIVER -> Color.rgb(0xEC, 0xE8, 0xDC); Skin.AIRCRAFT -> Color.rgb(0xF2, 0xEE, 0xE2); else -> Color.rgb(0xF0, 0xE4, 0xC4)
+    }
+    val PAPER get() = when (skin) {   // log-chart paper
+        Skin.RECEIVER -> AMBER_LIGHT; Skin.AIRCRAFT -> Color.rgb(0xF4, 0xF1, 0xE6); else -> Color.rgb(0xE8, 0xDC, 0xB8)
+    }
     val COPPER = Color.rgb(0xB0, 0x7A, 0x4A)       // aged handle brackets and latches
     val COPPER_DARK = Color.rgb(0x5E, 0x3A, 0x20)
     val INK = Color.rgb(0x1A, 0x16, 0x12)
@@ -89,8 +108,32 @@ object Radio {
     fun tile(ctx: Context, bmp: Bitmap): BitmapDrawable =
         BitmapDrawable(ctx.resources, bmp).apply { setTileModeXY(Shader.TileMode.REPEAT, Shader.TileMode.REPEAT) }
 
+    /** Aircraft set: worn black stove-enamel panel, fine speckle and light scratches. */
+    val blackEnamel: Bitmap by lazy {
+        val n = 160
+        val bmp = Bitmap.createBitmap(n, n, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.drawColor(Color.rgb(0x15, 0x15, 0x15))
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        val r = Random(44)
+        repeat(900) {
+            p.color = if (r.nextBoolean()) Color.argb(r.nextInt(8, 22), 255, 255, 255) else Color.argb(r.nextInt(10, 30), 0, 0, 0)
+            c.drawRect(r.nextFloat() * n, r.nextFloat() * n, r.nextFloat() * n + 1, r.nextFloat() * n + 1, p)
+        }
+        p.strokeWidth = 0.6f
+        repeat(14) {   // light scratches, drawn wrapped so the tile repeats cleanly
+            p.color = Color.argb(r.nextInt(14, 30), 255, 255, 255)
+            val x = r.nextFloat() * n; val y = r.nextFloat() * n
+            val dx = r.nextFloat() * 40 - 20; val dy = r.nextFloat() * 8 - 4
+            for (ox in listOf(-n, 0, n)) for (oy in listOf(-n, 0, n)) c.drawLine(x + ox, y + oy, x + ox + dx, y + oy + dy, p)
+        }
+        bmp
+    }
+
     /** The whole-screen background for the current cabinet. */
-    fun background(ctx: Context) = tile(ctx, if (receiver) greyCrackle else grain)
+    fun background(ctx: Context) = tile(ctx, when (skin) {
+        Skin.RECEIVER -> greyCrackle; Skin.AIRCRAFT -> blackEnamel; else -> grain
+    })
 
     /**
      * A seamless tile of irregular cells (a jittered Voronoi pattern): [base] cells with
@@ -180,7 +223,9 @@ object Radio {
     class LidDrawable(private val ctx: Context) : Drawable() {
         private val d = ctx.resources.displayMetrics.density
         private val framePaint = Paint().apply {
-            shader = android.graphics.BitmapShader(if (receiver) greyCrackle else grain, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+            shader = android.graphics.BitmapShader(when (skin) {
+                Skin.RECEIVER -> greyCrackle; Skin.AIRCRAFT -> blackEnamel; else -> grain
+            }, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
         }
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             if (receiver) shader = android.graphics.BitmapShader(blackCrackle, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
