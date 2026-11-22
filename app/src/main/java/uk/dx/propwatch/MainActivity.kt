@@ -180,9 +180,10 @@ class MainActivity : Activity() {
         val report = Store.loadReport(this)
         render(report, animateNeedle = false)
         if (savedInstanceState == null) {
-            Sfx.startup(this)
+            // Silent warm-up of the dial lamps, then a fresh check every time the app opens.
             dial?.warmUp(level(report))
             receiver?.warmUp(Bands.level(report?.findings.orEmpty(), Store.band(this)), kp(report))
+            checkNow(fromUser = false)
         }
     }
 
@@ -235,7 +236,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(10))
         }
         front.addView(status)
-        checkBtn = radioButton("Check now") { checkNow() }
+        checkBtn = radioButton("Check now", silent = true) { checkNow(fromUser = true) }
         front.addView(checkBtn)
         root.addView(front)
     }
@@ -259,7 +260,7 @@ class MainActivity : Activity() {
             bands = BAND_KEYS.map { k -> if (k == "all") "ALL" else Bands.ALL.first { it.first == k }.second }
             selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
             toggles = toneSwitches()
-            onCheck = { if (checkBtn.isEnabled) { Sfx.click(this@MainActivity); checkNow() } }
+            onCheck = { checkNow(fromUser = true) }
             onSelect = { i ->
                 Sfx.detent(this@MainActivity)
                 Store.saveBand(this@MainActivity, BAND_KEYS[i])
@@ -274,7 +275,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER; setPadding(dp(12), dp(4), dp(12), dp(10))
         }
         front.addView(status)
-        checkBtn = radioButton("Check now") { checkNow() }.apply {
+        checkBtn = radioButton("Check now", silent = true) { checkNow(fromUser = true) }.apply {
             (layoutParams as LinearLayout.LayoutParams).setMargins(dp(14), dp(4), dp(14), dp(4))
         }
         front.addView(checkBtn)
@@ -283,7 +284,8 @@ class MainActivity : Activity() {
 
     // ---- Styled widgets ----
 
-    private fun radioButton(t: String, onClick: () -> Unit) = Button(this).apply {
+    /** Bakelite push-button. [silent] skips the switch click, for buttons with their own sound. */
+    private fun radioButton(t: String, silent: Boolean = false, onClick: () -> Unit) = Button(this).apply {
         text = t
         typeface = Radio.SERIF
         letterSpacing = 0.12f
@@ -294,7 +296,7 @@ class MainActivity : Activity() {
         minHeight = dp(60)
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(6), 0, dp(6)) }
-        setOnClickListener { Sfx.click(this@MainActivity); onClick() }
+        setOnClickListener { if (!silent) Sfx.click(this@MainActivity); onClick() }
     }
 
     /**
@@ -526,7 +528,13 @@ class MainActivity : Activity() {
         Sfx.click(this)
     }
 
-    private fun checkNow() {
+    /**
+     * Runs every check in the background. [fromUser]: pressed Check now (or the receiver's
+     * vernier knob), so the valve warm-up sound plays; the automatic check at startup is silent.
+     */
+    private fun checkNow(fromUser: Boolean) {
+        if (!checkBtn.isEnabled) return   // a check is already running
+        if (fromUser) Sfx.tuneIn(this)
         checkBtn.isEnabled = false
         checkBtn.text = "Tuning…"
         receiver?.setChecking(true)
@@ -668,7 +676,6 @@ class MainActivity : Activity() {
         }
         locOnBtn.visibility = View.GONE
         locating = true
-        Sfx.startup(this)
         screen.showLocating()
         Locator.current(this) { l ->
             if (isFinishing) return@current
