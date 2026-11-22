@@ -2,10 +2,15 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v3.2
+
+- The lit radio location screen now lives in **Settings** instead of popping up. It always shows the station's town, country, latitude/longitude and Maidenhead locator; **Check my location** dims it, warms it up and sweeps the tuning cursor in place while a fresh fix comes in. If location is switched off, a **Turn on location** button appears under it.
+- New WW2-style app icon: an olive-drab field receiver with a leather handle, backlit dial and red needle, speaker slots, bakelite knobs and a green pilot lamp. Includes a single-colour version for Android 13+ themed icons.
+
 ## What's new in v3.1
 
 - **Phone location.** The station position now comes from the phone's GPS (or network location) by default, so bearings, the HF day/night choice and the settings follow you. Turn **Use phone location (GPS)** off to type coordinates instead. Settings shows the station's town, country and Maidenhead locator.
-- **Check my location** button: lights up an old-radio tuning screen that warms up, sweeps while the fix comes in, then shows your town, country, latitude/longitude, Maidenhead locator and fix accuracy.
+- **Check my location** button: an old-radio tuning screen warms up, sweeps while the fix comes in, then shows your town, country, latitude/longitude, Maidenhead locator and fix accuracy.
 - **Fixes HTTP 429 on live spots.** The 6m, 2m and 70cm checks now share one PSKReporter query (6m–70cm), reused for 5 minutes, so repeated "Check now" taps don't hit the server again. If PSKReporter does rate-limit, the app waits at least 15 minutes (or as long as the server asks) and keeps showing the last results meanwhile.
 - Location is only read while the app is open; background checks use the last position. Town names come from the phone's geocoder, or OpenStreetMap if the phone has none. The North Sea tropo paths stay fixed, as they're specific to eastern England.
 

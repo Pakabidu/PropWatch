@@ -275,11 +275,12 @@ class DialView(ctx: Context) : View(ctx) {
 
 /**
  * Backlit cream screen, like a valve set's tuning window, showing the station's
- * location. Warms up when shown; a red cursor sweeps while the fix is coming in.
+ * location in Settings. Dims and warms up again when retuned; a red cursor sweeps
+ * while the fix is coming in.
  */
 class LocationScreenView(ctx: Context) : View(ctx) {
     private val d = resources.displayMetrics.density
-    private var glow = 0f
+    private var glow = 1f
     private var sweep = 0f
     private var locating = true
     private var lines: List<String> = emptyList()   // city, country, lat/lon, locator, note
@@ -304,7 +305,7 @@ class LocationScreenView(ctx: Context) : View(ctx) {
 
     override fun onMeasure(w: Int, h: Int) {
         val width = MeasureSpec.getSize(w)
-        setMeasuredDimension(width, (width * 0.78f).toInt().coerceAtMost((300 * d).toInt()))
+        setMeasuredDimension(width, (width * 0.62f).toInt().coerceAtMost((260 * d).toInt()))
     }
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
@@ -379,16 +380,17 @@ class LocationScreenView(ctx: Context) : View(ctx) {
     fun showLocating(text: String = "TUNING IN…") {
         message = text; locating = true; lines = emptyList()
         anims.forEach { it.cancel() }; anims.clear()
-        animate(glow, 1f, 1400) { glow = it }
+        animate(0f, 1f, 1400) { glow = it }
         animate(0f, 1f, 1100, 300, repeat = true) { sweep = it }
     }
 
-    fun showResult(city: String, country: String, latLon: String, locator: String, footnote: String) {
+    fun showResult(city: String, country: String, latLon: String, locator: String, footnote: String,
+                   animate: Boolean = true) {
         anims.forEach { it.cancel() }; anims.clear()
         locating = false; glow = 1f
         lines = listOf(city, country, latLon, locator, footnote)
         // A brief flicker as the reading settles, like a lamp on a shaky filament.
-        animate(0.75f, 1f, 450) { glow = it }
+        if (animate) animate(0.75f, 1f, 450) { glow = it } else invalidate()
     }
 
     fun showMessage(text: String) {

@@ -26,9 +26,15 @@ object Store {
     fun useGps(ctx: Context) = p(ctx).getBoolean("use_gps", true)
     fun saveUseGps(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("use_gps", on).apply()
 
-    /** Last reverse-geocoded place name ("Boston, United Kingdom"), shown in Settings. */
-    fun placeName(ctx: Context): String? = p(ctx).getString("place", null)
-    fun savePlaceName(ctx: Context, name: String?) = p(ctx).edit().putString("place", name).apply()
+    /** Town and country for the station, reverse-geocoded; shown on the Settings location screen. */
+    fun placeCity(ctx: Context): String? = p(ctx).getString("place_city", null)
+    fun placeCountry(ctx: Context): String? = p(ctx).getString("place_country", null)
+    fun savePlace(ctx: Context, city: String?, country: String?) =
+        p(ctx).edit().putString("place_city", city).putString("place_country", country).apply()
+
+    /** Footnote for the last phone fix, e.g. "±12 m · GPS · Sun 14:32". */
+    fun fixNote(ctx: Context): String? = p(ctx).getString("fix_note", null)
+    fun saveFixNote(ctx: Context, note: String?) = p(ctx).edit().putString("fix_note", note).apply()
 
     fun intervalHours(ctx: Context) = p(ctx).getInt("interval", 3)
     fun saveInterval(ctx: Context, h: Int) = p(ctx).edit().putInt("interval", h).apply()
