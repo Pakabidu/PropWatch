@@ -559,6 +559,9 @@ class LogChartView(ctx: Context) : CabinetView(ctx) {
             speck.color = Color.argb((s[3] * 255).toInt(), 0x96, 0x78, 0x46)
             c.drawCircle(gx + s[0] * gw, gy + s[1] * gh, s[2], speck)
         }
+        if (Radio.aircraft) {   // a ruled log card: blue fine lines, red bold rules
+            fine.color = Color.argb(0x90, 0x8A, 0xA0, 0xC8); bold.color = Color.argb(0xCC, 0xC8, 0x50, 0x50)
+        }
         for (k in 0..48) c.drawLine(gx + gw * k / 48, gy, gx + gw * k / 48, gy + gh, fine)
         for (k in 0..Bands.ALL.size * 2) c.drawLine(gx, gy + gh * k / (Bands.ALL.size * 2), gx + gw, gy + gh * k / (Bands.ALL.size * 2), fine)
         for (k in 0..24 step 4) c.drawLine(gx + gw * k / 24, gy, gx + gw * k / 24, gy + gh, bold)
@@ -668,12 +671,21 @@ class StationLogView(ctx: Context) : CabinetView(ctx) {
         val w = width.toFloat()
         val cream = Radio.mix(Color.rgb(0x40, 0x3B, 0x33), Radio.CREAM, glow)
         // Title ribbon, like the lid's nameplate band.
+        ribbon.shader = if (Radio.aircraft) LinearGradient(0f, 0f, w, ribbonH,   // brass label plate
+            intArrayOf(Radio.PLATE_LIGHT, Radio.PLATE, Radio.PLATE_DARK), null, Shader.TileMode.CLAMP) else null
         c.drawRoundRect(0f, 0f, w, ribbonH, 2 * d, 2 * d, ribbon)
         c.drawText("STATION LOG", w / 2, ribbonH / 2 + ribbonText.textSize * 0.36f, ribbonText)
 
         // World chart: cream continents on black (portable), or dark continents on a
         // backlit amber chart (receiver).
-        if (Radio.receiver) {
+        if (Radio.aircraft) {
+            // Navigator's chart: white card, blue graticule, grey land with black coastlines.
+            sea.shader = null; sea.color = Color.rgb(0xF4, 0xF1, 0xE6)
+            c.drawRect(mapRect, sea)
+            grid.color = Color.argb(0x90, 0x5E, 0x8F, 0xC8)
+            land.color = Radio.mix(Color.rgb(0x9A, 0x96, 0x8A), Color.rgb(0xD6, 0xD0, 0xC0), glow)
+            coast.color = Radio.INK
+        } else if (Radio.receiver) {
             sea.shader = RadialGradient(mapRect.centerX(), mapRect.bottom, mapRect.width() * 0.75f,
                 intArrayOf(Radio.mix(Color.rgb(0x50, 0x38, 0x18), Radio.AMBER_LIGHT, glow), Radio.mix(Color.rgb(0x3A, 0x26, 0x10), Radio.AMBER, glow),
                     Radio.mix(Color.rgb(0x20, 0x14, 0x08), Radio.AMBER_DARK, glow)), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
@@ -682,7 +694,7 @@ class StationLogView(ctx: Context) : CabinetView(ctx) {
             land.color = Color.argb(0xD0, 0x3A, 0x22, 0x0C)
             coast.color = Radio.DIAL_INK
         } else {
-            sea.shader = null
+            sea.shader = null; sea.color = Color.rgb(0x0B, 0x0A, 0x09)
             c.drawRect(mapRect, sea)
             grid.color = Radio.mix(Color.rgb(0x1E, 0x1B, 0x17), Color.rgb(0x3A, 0x34, 0x2A), glow)
             land.color = Radio.mix(Color.rgb(0x3A, 0x35, 0x2C), Color.rgb(0xD8, 0xCB, 0xA6), glow)

@@ -27,6 +27,24 @@ import kotlin.math.sin
  * names or logos.
  */
 
+/**
+ * A drawn front panel with its own dials and controls (receiver and aircraft cabinets),
+ * so the activity can drive either the same way.
+ */
+interface FrontPanel {
+    var bands: List<String>
+    var bandLamps: List<Int?>
+    var selected: Int
+    var toggles: List<Pair<String, Boolean>>
+    var onCheck: (() -> Unit)?
+    var onSelect: ((Int) -> Unit)?
+    var onToggle: ((Int, Boolean) -> Unit)?
+    /** [level] 0 quiet, 1 heads-up, 2 open, -1 no data; [kp] 0..9 or null. */
+    fun show(level: Int, kp: Float?, animated: Boolean)
+    fun warmUp(level: Int, kp: Float?)
+    fun setChecking(on: Boolean)
+}
+
 /** Separate speaker cabinet that sits on top of the receiver: grey crackle box, chrome louvres. */
 class SpeakerCabinetView(ctx: Context) : CabinetView(ctx) {
     private val box = paint()
@@ -72,18 +90,18 @@ class SpeakerCabinetView(ctx: Context) : CabinetView(ctx) {
  * the waveband (with a pilot lamp beside each band); the toggles switch SOUND, MONITOR
  * and GPS. The other knobs are for show.
  */
-class ReceiverPanelView(ctx: Context) : CabinetView(ctx) {
-    var bands: List<String> = emptyList()
+class ReceiverPanelView(ctx: Context) : CabinetView(ctx), FrontPanel {
+    override var bands: List<String> = emptyList()
         set(v) { field = v; invalidate() }
-    var bandLamps: List<Int?> = emptyList()
+    override var bandLamps: List<Int?> = emptyList()
         set(v) { field = v; invalidate() }
-    var selected = 0
+    override var selected = 0
         set(v) { field = v; animateSwitch() }
-    var toggles: List<Pair<String, Boolean>> = emptyList()   // label to state
+    override var toggles: List<Pair<String, Boolean>> = emptyList()   // label to state
         set(v) { field = v; invalidate() }
-    var onCheck: (() -> Unit)? = null
-    var onSelect: ((Int) -> Unit)? = null
-    var onToggle: ((Int, Boolean) -> Unit)? = null
+    override var onCheck: (() -> Unit)? = null
+    override var onSelect: ((Int) -> Unit)? = null
+    override var onToggle: ((Int, Boolean) -> Unit)? = null
 
     // Animated state.
     private var glow = 1f           // dial lamps: 0 cold, 1 warm
@@ -435,7 +453,7 @@ class ReceiverPanelView(ctx: Context) : CabinetView(ctx) {
     private fun sPos(level: Int) = when (level) { 2 -> 0.86f; 1 -> 0.64f; 0 -> 0.32f; else -> 0.04f }
 
     /** Points the dial at a reading: [level] 0 quiet, 1 heads-up, 2 open, -1 no data; [kp] 0..9 or null. */
-    fun show(level: Int, kp: Float?, animated: Boolean = true) {
+    override fun show(level: Int, kp: Float?, animated: Boolean) {
         val p = levelPos(level.coerceAtLeast(0)); val s = sPos(level); val k = (kp ?: 0f) / 9f
         if (!animated) { pointer = p; sNeedle = s; kpNeedle = k; invalidate(); return }
         animate(pointer, p, 800, 0, OvershootInterpolator(0.6f)) { pointer = it }
@@ -444,7 +462,7 @@ class ReceiverPanelView(ctx: Context) : CabinetView(ctx) {
     }
 
     /** Valve warm-up: the dial lamps glow up, then the pointer and needles swing onto the reading. */
-    fun warmUp(level: Int, kp: Float?) {
+    override fun warmUp(level: Int, kp: Float?) {
         glow = 0f; pointer = 1f; sNeedle = 0f; kpNeedle = 0f; invalidate()
         animate(0f, 1f, 1600, 150) { glow = it }
         animate(1f, levelPos(level.coerceAtLeast(0)), 1100, 1000, OvershootInterpolator(0.6f)) { pointer = it }
@@ -453,7 +471,7 @@ class ReceiverPanelView(ctx: Context) : CabinetView(ctx) {
     }
 
     /** The vernier ring turns while a check is running. */
-    fun setChecking(on: Boolean) {
+    override fun setChecking(on: Boolean) {
         spinner?.cancel(); spinner = null
         if (on) spinner = ValueAnimator.ofFloat(0f, 360f).apply {
             duration = 2400; repeatCount = ValueAnimator.INFINITE; interpolator = LinearInterpolator()

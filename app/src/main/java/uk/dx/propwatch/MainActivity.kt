@@ -34,7 +34,8 @@ class MainActivity : Activity() {
     private var dial: DialView? = null
     private var bandPlate: BandPlateView? = null
     private var tonePlate: TonePlateView? = null
-    private var receiver: ReceiverPanelView? = null
+    private var receiver: FrontPanel? = null          // receiver or aircraft drawn panel
+    private var aircraft: AircraftPanelView? = null
     private lateinit var logChart: LogChartView
     private lateinit var updateBtn: Button
     private lateinit var latField: EditText
@@ -65,7 +66,11 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(16), dp(16), dp(32))
         }
 
-        if (Radio.receiver) buildReceiverFront(root) else buildPortableFront(root)
+        when (Radio.skin) {
+            Radio.Skin.RECEIVER -> buildReceiverFront(root)
+            Radio.Skin.AIRCRAFT -> buildAircraftFront(root)
+            else -> buildPortableFront(root)
+        }
 
         // The open lid: log chart, readings, sources and settings on a black instruction panel.
         val lid = LinearLayout(this).apply {
@@ -97,7 +102,8 @@ class MainActivity : Activity() {
 
         lid.addView(section("Settings"))
         lid.addView(label("Cabinet"))
-        for ((skin, name) in listOf(Radio.Skin.PORTABLE to "1940s portable", Radio.Skin.RECEIVER to "Communications receiver")) {
+        for ((skin, name) in listOf(Radio.Skin.PORTABLE to "1940s portable", Radio.Skin.RECEIVER to "Communications receiver",
+                Radio.Skin.AIRCRAFT to "WW2 aircraft wireless")) {
             lid.addView(radioButton((if (Radio.skin == skin) "● " else "○ ") + name) {
                 if (Radio.skin != skin) {
                     Store.saveSkin(this, skin)
@@ -119,7 +125,7 @@ class MainActivity : Activity() {
             startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
         }.apply { visibility = View.GONE }
         lid.addView(locOnBtn)
-        lid.addView(radioButton("Check my location") { checkMyLocation() })
+        lid.addView(radioButton("Check my location", silent = true) { checkMyLocation() })
         lid.addView(label("Latitude")); lid.addView(lat)
         lid.addView(label("Longitude")); lid.addView(lon)
         lid.addView(label("Check every (hours, 1–12)")); lid.addView(interval)
@@ -283,6 +289,51 @@ class MainActivity : Activity() {
         root.addView(front)
     }
 
+    /**
+     * The WW2 aircraft wireless set: one drawn panel (meters, semicircular dial, big
+     * knurled knob, station record, coloured levers, band switch), then readout and button.
+     */
+    private fun buildAircraftFront(root: LinearLayout) {
+        val front = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Radio.tile(this@MainActivity, Radio.blackEnamel)
+            setPadding(0, 0, 0, dp(14))
+        }
+        val panel = AircraftPanelView(this).apply {
+            bands = BAND_KEYS.map { k -> if (k == "all") "ALL" else Bands.ALL.first { it.first == k }.second }
+            selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
+            toggles = toneSwitches()
+            record = stationRecord()
+            onCheck = { checkNow() }
+            onSelect = { i ->
+                Sfx.detent(this@MainActivity)
+                Store.saveBand(this@MainActivity, BAND_KEYS[i])
+                render(Store.loadReport(this@MainActivity), animateNeedle = true)
+            }
+            onToggle = { i, on -> toggle(i, on) }
+        }
+        receiver = panel
+        aircraft = panel
+        front.addView(panel)
+        status = TextView(this).apply {
+            textSize = 15f; typeface = Radio.MONO; setTextColor(Radio.CREAM)
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(4), dp(12), dp(10))
+        }
+        front.addView(status)
+        checkBtn = radioButton("Check now", silent = true) { checkNow() }.apply {
+            (layoutParams as LinearLayout.LayoutParams).setMargins(dp(14), dp(4), dp(14), dp(4))
+        }
+        front.addView(checkBtn)
+        root.addView(front)
+    }
+
+    /** Lines for the aircraft set's station-record card. */
+    private fun stationRecord(): List<String> {
+        val st = Store.station(this)
+        return listOf("LOCATOR ${Geo.latLonToLoc(st.lat, st.lon).uppercase()}",
+            "BUILD ${Updater.currentBuild(this)}", "TYPE PW-44")
+    }
+
     // ---- Styled widgets ----
 
     /** Bakelite push-button. [silent] skips the switch click, for buttons with their own sound. */
@@ -442,7 +493,14 @@ class MainActivity : Activity() {
         letterSpacing = if (pill) 0.3f else 0.22f
         gravity = Gravity.CENTER
         setPadding(dp(8), dp(if (pill) 5 else 3), dp(8), dp(if (pill) 5 else 3))
-        if (Radio.receiver) {
+        if (Radio.aircraft) {
+            // Aircraft set: black capitals engraved on a brass label plate.
+            text = t.uppercase()
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            setTextColor(Color.rgb(0x15, 0x12, 0x0C))
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Radio.PLATE_LIGHT, Radio.PLATE, Radio.PLATE_DARK)).apply { cornerRadius = dp(2).toFloat() }
+        } else if (Radio.receiver) {
             // Receiver: white engraved capitals between red chevrons, like its nameplate.
             val label = "›››  ${t.uppercase()}  ‹‹‹"
             text = android.text.SpannableString(label).apply {
@@ -605,8 +663,9 @@ class MainActivity : Activity() {
         append(" · ").append(Checker.ukTime(l.time).uppercase())
     }
 
-    /** Puts the saved station on the lit screen. */
+    /** Puts the saved station on the lit screen (and the aircraft set's record card). */
     private fun showStation(animate: Boolean = false) {
+        aircraft?.record = stationRecord()
         if (locating) return
         val st = Store.station(this)
         val gps = Store.useGps(this)
@@ -677,6 +736,7 @@ class MainActivity : Activity() {
         }
         locOnBtn.visibility = View.GONE
         locating = true
+        Sfx.locate(this)   // D/F sweep, then "QTH?" in Morse
         screen.showLocating()
         Locator.current(this) { l ->
             if (isFinishing) return@current
