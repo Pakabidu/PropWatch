@@ -2,6 +2,10 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v6.1
+
+- **Updates itself.** Every time it starts, PropWatch checks for a newer build. If there is one, it downloads it in the background (with a progress notification) and then asks **Update ready — Install now?**. Tapping Install opens Android's installer to confirm. The first time, Android asks you to allow PropWatch to install apps; the app takes you to that switch and carries on when you come back. **Check for updates** uses the same in-app download. Old downloaded updates are tidied away.
+
 ## What's new in v6.0
 
 - **Mood light.** One of the two spare sockets beside the speaker is now a **MOOD LIGHT** knob. Turn it on and the room goes dark around a table lamp just off the top corner: the dials, meters, jewel lamps and pilot lamps glow warm orange and the button lettering lights up amber. It fades in and out and is remembered.
@@ -155,7 +159,7 @@ Open the folder in Android Studio (Hedgehog or newer), let it sync, then **Run**
 
 ## Updating
 
-Tap **Check for updates** in Settings. If a newer build is published it offers **Download**; open the downloaded `PropWatch.apk` and install over the current version. Settings are kept.
+PropWatch checks for a newer build every time it starts (and when you tap **Check for updates** in Settings), downloads it in the background and offers to install it. Android always asks you to confirm the install, and the first time asks you to allow PropWatch to install apps. Settings are kept.
 
 Only builds from the `main` branch are published as updates. The APK is signed with the debug key in `app/debug.keystore`, which is committed so every build matches. That's fine for a personal app, but it means anyone with the repo could sign an APK that installs over PropWatch, so for wider distribution switch to a private release key kept in a GitHub secret.
 
