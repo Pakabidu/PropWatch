@@ -2,6 +2,10 @@ package uk.dx.propwatch
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.Dialog
+import android.graphics.drawable.ColorDrawable
+import android.location.Location
+import android.provider.Settings
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -29,6 +33,9 @@ class MainActivity : Activity() {
     private lateinit var checkBtn: Button
     private lateinit var dial: DialView
     private lateinit var updateBtn: Button
+    private lateinit var latField: EditText
+    private lateinit var lonField: EditText
+    private lateinit var placeLabel: TextView
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -37,11 +44,12 @@ class MainActivity : Activity() {
         window.statusBarColor = Radio.LEATHER
         window.navigationBarColor = Radio.LEATHER
         Notifier.ensureChannels(this)
+        val ask = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 1)
-        }
+        ) ask += "android.permission.POST_NOTIFICATIONS"
+        if (Store.useGps(this) && !Locator.hasPermission(this)) ask += LOCATION_PERMS
+        if (ask.isNotEmpty() && savedInstanceState == null) requestPermissions(ask.toTypedArray(), REQ_STARTUP)
         PropWorker.schedule(this)
         Sfx.init(this)
 
@@ -85,9 +93,19 @@ class MainActivity : Activity() {
 
         root.addView(section("Settings"))
         val st = Store.station(this)
-        val lat = number("Latitude", st.lat.toString())
-        val lon = number("Longitude", st.lon.toString())
+        val lat = number("Latitude", "%.4f".format(java.util.Locale.US, st.lat)).also { latField = it }
+        val lon = number("Longitude", "%.4f".format(java.util.Locale.US, st.lon)).also { lonField = it }
         val interval = number("Check every (hours, 1–12)", Store.intervalHours(this).toString(), decimal = false)
+        placeLabel = TextView(this).apply {
+            textSize = 12f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.8f; setPadding(0, dp(4), 0, dp(2))
+        }
+        root.addView(placeLabel)
+        root.addView(radioSwitch("Use phone location (GPS)", Store.useGps(this)) { on ->
+            Store.saveUseGps(this, on)   // applies immediately
+            applyGpsMode()
+            if (on) { if (Locator.hasPermission(this)) refreshStationQuietly() else requestPermissions(LOCATION_PERMS, REQ_REFRESH) }
+        })
+        root.addView(radioButton("Check my location") { checkMyLocation() })
         root.addView(label("Latitude")); root.addView(lat)
         root.addView(label("Longitude")); root.addView(lon)
         root.addView(label("Check every (hours, 1–12)")); root.addView(interval)
@@ -103,7 +121,11 @@ class MainActivity : Activity() {
             if (la == null || lo == null || la !in -90.0..90.0 || lo !in -180.0..180.0 || h == null || h !in 1..12) {
                 Toast.makeText(this, "Check the values", Toast.LENGTH_SHORT).show()
             } else {
-                Store.saveStation(this, Station(la, lo))
+                if (!Store.useGps(this)) {
+                    Store.saveStation(this, Station(la, lo))
+                    Store.savePlaceName(this, null)
+                    updatePlaceLabel()
+                }
                 Store.saveInterval(this, h)
                 Store.saveEnabled(this, enabled.isChecked)
                 PropWorker.schedule(this)
@@ -134,6 +156,9 @@ class MainActivity : Activity() {
             isFillViewport = true
             addView(root)
         })
+
+        applyGpsMode()
+        if (Store.useGps(this) && Locator.hasPermission(this)) refreshStationQuietly()
 
         val report = Store.loadReport(this)
         render(report, animateNeedle = false)
@@ -227,6 +252,7 @@ class MainActivity : Activity() {
     private fun checkNow() {
         checkBtn.isEnabled = false
         checkBtn.text = "Tuning…"
+        if (Store.useGps(this)) Locator.lastKnown(this)?.let { useFix(it) }
         val station = Store.station(this)
         Thread {
             val r = Checker(station).run()
@@ -238,6 +264,142 @@ class MainActivity : Activity() {
                 render(r, animateNeedle = true)
             }
         }.start()
+    }
+
+    // ---- Location ----
+
+    companion object {
+        private const val REQ_STARTUP = 1
+        private const val REQ_LOCATE = 2
+        private const val REQ_REFRESH = 3
+        private val LOCATION_PERMS = arrayOf(
+            "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION")
+    }
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
+        super.onRequestPermissionsResult(code, perms, results)
+        val granted = Locator.hasPermission(this)
+        updatePlaceLabel()
+        if (granted) {
+            when (code) {
+                REQ_STARTUP, REQ_REFRESH -> if (Store.useGps(this)) refreshStationQuietly()
+                REQ_LOCATE -> checkMyLocation()
+            }
+        } else if (code == REQ_LOCATE || code == REQ_REFRESH) {
+            Toast.makeText(this, "Location permission refused — using the typed coordinates", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** With GPS on, the coordinate fields just show the fix; with it off they're editable. */
+    private fun applyGpsMode() {
+        val gps = Store.useGps(this)
+        for (f in listOf(latField, lonField)) { f.isEnabled = !gps; f.alpha = if (gps) 0.5f else 1f }
+        updatePlaceLabel()
+    }
+
+    private fun updatePlaceLabel() {
+        val st = Store.station(this)
+        val loc = Geo.latLonToLoc(st.lat, st.lon)
+        val src = when {
+            !Store.useGps(this) -> "typed coordinates"
+            !Locator.hasPermission(this) -> "GPS — permission needed"
+            else -> "phone location"
+        }
+        placeLabel.text = "STATION: ${Store.placeName(this) ?: "%.3f, %.3f".format(st.lat, st.lon)} · $loc\n($src)"
+    }
+
+    /** Makes a fix the station position (GPS mode only) and refreshes the fields. */
+    private fun useFix(l: Location) {
+        if (!Store.useGps(this)) return
+        val old = Store.station(this)
+        Store.saveStation(this, Station(l.latitude, l.longitude))
+        latField.setText("%.4f".format(java.util.Locale.US, l.latitude))
+        lonField.setText("%.4f".format(java.util.Locale.US, l.longitude))
+        // Moved more than ~5 km: the old place name no longer applies.
+        if (Geo.km(old.lat, old.lon, l.latitude, l.longitude) > 5.0) Store.savePlaceName(this, null)
+        updatePlaceLabel()
+    }
+
+    private fun placeText(p: Locator.Place) = listOfNotNull(p.city, p.country).joinToString(", ").ifEmpty { null }
+
+    /** On app open: take the cached fix (no GPS warm-up) and name it in the background. */
+    private fun refreshStationQuietly() {
+        fun apply(l: Location) {
+            useFix(l)
+            if (Store.placeName(this) != null) return
+            Thread {
+                val name = placeText(Locator.place(this, l.latitude, l.longitude))
+                runOnUiThread { if (name != null && Store.useGps(this)) { Store.savePlaceName(this, name); updatePlaceLabel() } }
+            }.start()
+        }
+        val cached = Locator.lastKnown(this)
+        if (cached != null) apply(cached)
+        // No cached fix, or an old one: get a fresh fix in the background.
+        if (cached == null || System.currentTimeMillis() - cached.time > 30 * 60_000L) {
+            Locator.current(this) { l -> if (l != null && !isFinishing) apply(l) }
+        }
+    }
+
+    private fun checkMyLocation() {
+        if (!Locator.hasPermission(this)) { requestPermissions(LOCATION_PERMS, REQ_LOCATE); return }
+
+        val screen = LocationScreenView(this)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(10))
+            background = Radio.panelBg(this@MainActivity, Radio.BRASS, 16f)
+            addView(screen)
+        }
+        val dialog = Dialog(this)
+        val settingsBtn = radioButton("Location settings") {
+            startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)); dialog.dismiss()
+        }.apply { visibility = View.GONE }
+        box.addView(settingsBtn)
+        box.addView(radioButton("Close") { dialog.dismiss() })
+        dialog.setContentView(box)
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(),
+            LinearLayout.LayoutParams.WRAP_CONTENT)
+        dialog.show()
+
+        if (!Locator.enabled(this)) {
+            screen.showMessage("LOCATION IS SWITCHED OFF")
+            settingsBtn.visibility = View.VISIBLE
+            return
+        }
+        Sfx.startup(this)
+        screen.showLocating()
+        Locator.current(this) { l ->
+            if (!dialog.isShowing) return@current
+            if (l == null) { screen.showMessage("NO FIX — TRY NEAR A WINDOW"); return@current }
+            useFix(l)
+            Thread {
+                val p = Locator.place(this, l.latitude, l.longitude)
+                runOnUiThread {
+                    val name = placeText(p)
+                    if (name != null && Store.useGps(this)) { Store.savePlaceName(this, name); updatePlaceLabel() }
+                    if (!dialog.isShowing) return@runOnUiThread
+                    Sfx.detent(this)
+                    val ns = if (l.latitude >= 0) "N" else "S"
+                    val ew = if (l.longitude >= 0) "E" else "W"
+                    val latLon = "%.4f° %s   %.4f° %s".format(java.util.Locale.US,
+                        kotlin.math.abs(l.latitude), ns, kotlin.math.abs(l.longitude), ew)
+                    val age = (System.currentTimeMillis() - l.time) / 60_000
+                    val foot = buildString {
+                        if (l.hasAccuracy()) append("±%.0f m · ".format(l.accuracy))
+                        append((l.provider ?: "fix").uppercase())
+                        if (age >= 2) append(" · $age MIN OLD")
+                        if (!Store.useGps(this@MainActivity)) append(" · NOT USED (GPS OFF)")
+                    }
+                    screen.showResult(
+                        (p.city ?: "Unknown town").uppercase(),
+                        (p.country ?: "Country unknown").uppercase(),
+                        latLon,
+                        "LOCATOR ${Geo.latLonToLoc(l.latitude, l.longitude)}",
+                        foot)
+                }
+            }.start()
+        }
     }
 
     private fun checkForUpdate() {

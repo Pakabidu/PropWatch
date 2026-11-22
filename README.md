@@ -2,6 +2,13 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v3.1
+
+- **Phone location.** The station position now comes from the phone's GPS (or network location) by default, so bearings, the HF day/night choice and the settings follow you. Turn **Use phone location (GPS)** off to type coordinates instead. Settings shows the station's town, country and Maidenhead locator.
+- **Check my location** button: lights up an old-radio tuning screen that warms up, sweeps while the fix comes in, then shows your town, country, latitude/longitude, Maidenhead locator and fix accuracy.
+- **Fixes HTTP 429 on live spots.** The 6m, 2m and 70cm checks now share one PSKReporter query (6m–70cm), reused for 5 minutes, so repeated "Check now" taps don't hit the server again. If PSKReporter does rate-limit, the app waits at least 15 minutes (or as long as the server asks) and keeps showing the last results meanwhile.
+- Location is only read while the app is open; background checks use the last position. Town names come from the phone's geocoder, or OpenStreetMap if the phone has none. The North Sea tropo paths stay fixed, as they're specific to eastern England.
+
 ## What's new in v3
 
 - **More bands.** HF band conditions (80m–40m, 30m–20m, 17m–15m, 12m–10m, day or night for your station) from N0NBH, with a heads-up when 10m/12m are rated Good. Live **6m** monitoring from PSKReporter alerts on sporadic E and on long-haul (≥3500 km) multi-hop / F2 DX, and shows N0NBH's Europe 6m and 4m Es status. The dial gains an HF scale marking 160, 80, 40, 20, 15, 10 and 6m.
@@ -67,4 +74,4 @@ To make alerts reliable, set the app's battery usage to **Unrestricted** (Settin
 
 ## Defaults
 
-Station: Boston, Lincolnshire (52.98 N, 0.02 W). Checks every 3 hours on any network. Both can be changed on the app's settings section.
+Station: the phone's location (allow location access when asked). Until a fix arrives, or with GPS turned off, it's Boston, Lincolnshire (52.98 N, 0.02 W). Checks every 3 hours on any network. All of this can be changed in the app's settings section.

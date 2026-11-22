@@ -272,3 +272,133 @@ class DialView(ctx: Context) : View(ctx) {
         super.onDetachedFromWindow()
     }
 }
+
+/**
+ * Backlit cream screen, like a valve set's tuning window, showing the station's
+ * location. Warms up when shown; a red cursor sweeps while the fix is coming in.
+ */
+class LocationScreenView(ctx: Context) : View(ctx) {
+    private val d = resources.displayMetrics.density
+    private var glow = 0f
+    private var sweep = 0f
+    private var locating = true
+    private var lines: List<String> = emptyList()   // city, country, lat/lon, locator, note
+    private var message = "TUNING IN…"
+    private val anims = mutableListOf<ValueAnimator>()
+
+    private val bezel = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val face = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glare = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rule = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1.2f * d }
+    private val head = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = Radio.SERIF; textSize = 11 * d; letterSpacing = 0.35f; textAlign = Paint.Align.CENTER
+    }
+    private val big = Paint(head).apply { textSize = 24 * d; letterSpacing = 0.04f }
+    private val mid = Paint(head).apply { textSize = 15 * d; letterSpacing = 0.12f; typeface = Typeface.SERIF }
+    private val mono = Paint(head).apply { textSize = 14 * d; letterSpacing = 0.05f; typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD) }
+    private val note = Paint(head).apply { textSize = 10 * d; letterSpacing = 0.1f; typeface = Typeface.MONOSPACE }
+    private val cursor = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(0xB3, 0x26, 0x1E); strokeWidth = 2.4f * d; strokeCap = Paint.Cap.ROUND
+    }
+    private val outer = RectF(); private val inner = RectF()
+
+    override fun onMeasure(w: Int, h: Int) {
+        val width = MeasureSpec.getSize(w)
+        setMeasuredDimension(width, (width * 0.78f).toInt().coerceAtMost((300 * d).toInt()))
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+        outer.set(0f, 0f, w.toFloat(), h.toFloat())
+        inner.set(8 * d, 8 * d, w - 8 * d, h - 8 * d)
+        bezel.shader = LinearGradient(0f, 0f, w.toFloat(), h.toFloat(),
+            intArrayOf(Color.rgb(0xE6, 0xC8, 0x82), Radio.BRASS_DARK, Color.rgb(0xD4, 0xB0, 0x6A), Color.rgb(0x6E, 0x52, 0x22)),
+            null, Shader.TileMode.CLAMP)
+        glare.shader = LinearGradient(0f, inner.top, 0f, inner.top + inner.height() * 0.45f,
+            Color.argb(0x55, 255, 255, 255), Color.argb(0, 255, 255, 255), Shader.TileMode.CLAMP)
+    }
+
+    private fun mix(a: Int, b: Int, t: Float) = Color.rgb(
+        (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt(),
+        (Color.green(a) + (Color.green(b) - Color.green(a)) * t).toInt(),
+        (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t).toInt())
+
+    /** Draws [text] centred, shrinking it to fit the screen width. */
+    private fun fit(c: Canvas, text: String, y: Float, p: Paint) {
+        val max = inner.width() - 28 * d
+        val size = p.textSize
+        while (p.measureText(text) > max && p.textSize > 8 * d) p.textSize *= 0.93f
+        c.drawText(text, inner.centerX(), y, p)
+        p.textSize = size
+    }
+
+    override fun onDraw(c: Canvas) {
+        c.drawRoundRect(outer, 20 * d, 20 * d, bezel)
+        face.shader = RadialGradient(inner.centerX(), inner.centerY(), inner.width() * 0.7f,
+            mix(Color.rgb(0x4A, 0x3F, 0x30), Color.rgb(0xF8, 0xE9, 0xBC), glow),
+            mix(Color.rgb(0x22, 0x1C, 0x15), Color.rgb(0xB8, 0x98, 0x5E), glow), Shader.TileMode.CLAMP)
+        c.drawRoundRect(inner, 14 * d, 14 * d, face)
+        val ink = mix(Color.rgb(0x1A, 0x14, 0x0E), Radio.INK, glow)
+        listOf(rule, head, big, mid, mono, note).forEach { it.color = ink }
+
+        val h = inner.height()
+        val top = inner.top
+        c.drawText("STATION LOCATION", inner.centerX(), top + h * 0.13f, head)
+        c.drawLine(inner.left + 24 * d, top + h * 0.18f, inner.right - 24 * d, top + h * 0.18f, rule)
+
+        if (locating || lines.isEmpty()) {
+            fit(c, message, top + h * 0.52f, mid)
+            if (locating) {
+                // Tuning cursor sweeping along a little scale.
+                val l = inner.left + 36 * d; val r = inner.right - 36 * d; val y = top + h * 0.72f
+                c.drawLine(l, y, r, y, rule)
+                for (i in 0..10) { val x = l + (r - l) * i / 10f; c.drawLine(x, y, x, y - (if (i % 5 == 0) 8 else 4) * d, rule) }
+                val x = l + (r - l) * sweep
+                c.drawLine(x, y - 16 * d, x, y + 6 * d, cursor)
+            }
+        } else {
+            fit(c, lines[0], top + h * 0.37f, big)
+            fit(c, lines[1], top + h * 0.50f, mid)
+            c.drawLine(inner.left + 60 * d, top + h * 0.57f, inner.right - 60 * d, top + h * 0.57f, rule)
+            fit(c, lines[2], top + h * 0.69f, mono)
+            fit(c, lines[3], top + h * 0.80f, mono)
+            fit(c, lines[4], top + h * 0.91f, note)
+        }
+        c.drawRoundRect(inner, 14 * d, 14 * d, glare)
+    }
+
+    private fun animate(from: Float, to: Float, ms: Long, delay: Long = 0, repeat: Boolean = false, set: (Float) -> Unit) {
+        anims += ValueAnimator.ofFloat(from, to).apply {
+            duration = ms; startDelay = delay; interpolator = DecelerateInterpolator()
+            if (repeat) { repeatCount = ValueAnimator.INFINITE; repeatMode = ValueAnimator.REVERSE }
+            addUpdateListener { set(it.animatedValue as Float); invalidate() }
+            start()
+        }
+    }
+
+    /** Lamp warms up and the cursor starts sweeping. */
+    fun showLocating(text: String = "TUNING IN…") {
+        message = text; locating = true; lines = emptyList()
+        anims.forEach { it.cancel() }; anims.clear()
+        animate(glow, 1f, 1400) { glow = it }
+        animate(0f, 1f, 1100, 300, repeat = true) { sweep = it }
+    }
+
+    fun showResult(city: String, country: String, latLon: String, locator: String, footnote: String) {
+        anims.forEach { it.cancel() }; anims.clear()
+        locating = false; glow = 1f
+        lines = listOf(city, country, latLon, locator, footnote)
+        // A brief flicker as the reading settles, like a lamp on a shaky filament.
+        animate(0.75f, 1f, 450) { glow = it }
+    }
+
+    fun showMessage(text: String) {
+        anims.forEach { it.cancel() }; anims.clear()
+        locating = false; lines = emptyList(); message = text; glow = 1f
+        invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        anims.forEach { it.cancel() }; anims.clear()
+        super.onDetachedFromWindow()
+    }
+}

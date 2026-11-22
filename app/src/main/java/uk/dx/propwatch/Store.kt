@@ -22,6 +22,14 @@ object Store {
     fun saveStation(ctx: Context, s: Station) =
         p(ctx).edit().putFloat("lat", s.lat.toFloat()).putFloat("lon", s.lon.toFloat()).apply()
 
+    /** Take the station position from the phone's location instead of typed coordinates. */
+    fun useGps(ctx: Context) = p(ctx).getBoolean("use_gps", true)
+    fun saveUseGps(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("use_gps", on).apply()
+
+    /** Last reverse-geocoded place name ("Boston, United Kingdom"), shown in Settings. */
+    fun placeName(ctx: Context): String? = p(ctx).getString("place", null)
+    fun savePlaceName(ctx: Context, name: String?) = p(ctx).edit().putString("place", name).apply()
+
     fun intervalHours(ctx: Context) = p(ctx).getInt("interval", 3)
     fun saveInterval(ctx: Context, h: Int) = p(ctx).edit().putInt("interval", h).apply()
 
