@@ -222,7 +222,7 @@ class ReceiverPanelView(ctx: Context) : CabinetView(ctx) {
         val px = w.centerX(); val py = w.top + w.height() * 1.30f
         val a0 = -124f; val a1 = -56f
         fun ang(v: Float) = Math.toRadians((a0 + (a1 - a0) * v).toDouble())
-        val r0 = w.height() * 1.22f; val step = w.height() * 0.175f
+        val r0 = w.height() * 1.21f; val step = w.height() * 0.152f
         val rows = listOf(
             "" to listOf("QUIET", "HEADS-UP", "OPEN"),
             "HF" to listOf("80", "40", "20", "10"),
@@ -269,8 +269,8 @@ class ReceiverPanelView(ctx: Context) : CabinetView(ctx) {
     private fun meter(c: Canvas, r: RectF, big: String, small: String, labels: List<String>, redFrom: Int, value: Float) {
         val w = window(c, r, 0.28f)
         c.save(); c.clipPath(path)
-        val px = w.centerX(); val py = w.top + w.height() * 1.05f; val rr = w.height() * 0.78f
-        val a0 = -135f; val a1 = -45f
+        val px = w.centerX(); val py = w.top + w.height() * 1.05f; val rr = w.height() * 0.74f
+        val a0 = -126f; val a1 = -54f
         fun ang(v: Float) = Math.toRadians((a0 + (a1 - a0) * v).toDouble())
         ink.color = Radio.mix(Color.rgb(0x10, 0x08, 0x02), Radio.DIAL_INK, glow); ink.strokeWidth = d
         rect.set(px - rr, py - rr, px + rr, py + rr)
