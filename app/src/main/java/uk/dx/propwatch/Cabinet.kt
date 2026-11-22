@@ -69,19 +69,35 @@ object Hardware {
     private val screwPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val slot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(0x3A, 0x3A, 0x36) }
 
-    /** Mottled, etched-looking chrome like the radio's control plates. */
-    fun plate(c: Canvas, r: RectF, radius: Float, d: Float) {
+    private val clip = Path()
+
+    /** Mottled, etched-looking chrome like the radio's control plates, scratched and grubby with use. */
+    fun plate(c: Canvas, r: RectF, radius: Float, d: Float, seed: Int = 0) {
         plateFill.shader = LinearGradient(r.left, r.top, r.right, r.bottom,
-            intArrayOf(Color.rgb(0xB9, 0xB8, 0xB0), Color.rgb(0xE6, 0xE4, 0xDC), Color.rgb(0xA9, 0xA7, 0x9F)),
+            intArrayOf(Color.rgb(0xB0, 0xAE, 0xA4), Color.rgb(0xDC, 0xD9, 0xCE), Color.rgb(0x9E, 0x9B, 0x90)),
             floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
         c.drawRoundRect(r, radius, radius, plateFill)
         mottle.shader = BitmapShader(Radio.mottle, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
         c.drawRoundRect(r, radius, radius, mottle)
+        clip.reset(); clip.addRoundRect(r, radius, radius, Path.Direction.CW)
+        c.save(); c.clipPath(clip)
+        Wear.panel(c, r, seed, d, heavy = true)
+        Wear.chips(c, r, seed, 14, d, Color.argb(150, 0x6A, 0x60, 0x50))   // plating worn through to the base metal
+        c.restore()
         edge.strokeWidth = 1.2f * d
         c.drawRoundRect(r, radius, radius, edge)
     }
 
+    /** Rust bloom around a screw head that's seen damp sheds. */
+    private val rust = Paint(Paint.ANTI_ALIAS_FLAG)
+    fun rustRing(c: Canvas, x: Float, y: Float, d: Float, r: Float = 2.4f) {
+        rust.shader = RadialGradient(x, y, r * 2.2f * d, intArrayOf(Color.argb(0, 0x8A, 0x4A, 0x1A), Color.argb(70, 0x8A, 0x4A, 0x1A),
+            Color.argb(0, 0x8A, 0x4A, 0x1A)), floatArrayOf(0.4f, 0.6f, 1f), Shader.TileMode.CLAMP)
+        c.drawCircle(x, y, r * 2.2f * d, rust)
+    }
+
     fun screw(c: Canvas, x: Float, y: Float, d: Float, r: Float = 2.4f) {
+        rustRing(c, x, y, d, r)
         screwPaint.shader = RadialGradient(x - d, y - d, r * 1.8f * d, Color.rgb(0xF4, 0xF2, 0xEA), Radio.CHROME_DARK, Shader.TileMode.CLAMP)
         c.drawCircle(x, y, r * d, screwPaint)
         slot.strokeWidth = 0.8f * d
@@ -167,75 +183,162 @@ class GrilleView(ctx: Context) : CabinetView(ctx) {
         c.drawRoundRect(outer, 10 * d, 10 * d, recess)
         c.drawRoundRect(inner, 8 * d, 8 * d, weave)
         c.drawRoundRect(inner, 8 * d, 8 * d, shade)
+        // Years of dust settled into the cloth, and a paler patch where it's been brushed.
+        c.save(); c.clipRect(inner)
+        Wear.dust(c, inner, 3, (inner.width() * inner.height() / (d * d) / 30).toInt(), d, alpha = 60)
+        Wear.scuffs(c, inner, 3, 3, d, alpha = 16, colour = Color.rgb(0xC8, 0xC0, 0xB0))
+        c.restore()
         c.drawRoundRect(inner, 8 * d, 8 * d, rim)
     }
 }
 
 /**
- * Narrow chrome plate of rocker switches, like a tone selector, plus two round
- * sockets. The rockers are real toggles (e.g. SOUND, MONITOR, GPS).
+ * Narrow chrome plate of big, well-used rocker switches (SOUND, MONITOR, GPS), each
+ * with a jewel lamp, plus the MOOD LIGHT knob in the first of the two round sockets.
+ * The rockers and the knob are real toggles.
  */
-class TonePlateView(ctx: Context) : CabinetView(ctx) {
+class TonePlateView(ctx: Context) : CabinetView(ctx), MoodGlow {
     var switches: List<Pair<String, Boolean>> = emptyList()
         set(v) { field = v; invalidate() }
     var onToggle: ((Int, Boolean) -> Unit)? = null
+    var mood = false
+        set(v) { field = v; invalidate() }
+    var onMood: ((Boolean) -> Unit)? = null
 
-    private val label = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 8.5f * t; letterSpacing = 0.1f; textAlign = Paint.Align.CENTER }
-    private val arrow = paint(Color.rgb(0x33, 0x33, 0x33)) { typeface = Radio.SERIF; textSize = 6 * t; textAlign = Paint.Align.CENTER }
-    private val slotPaint = paint(Color.rgb(0x1A, 0x19, 0x18))
+    private val label = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 9f * t; letterSpacing = 0.12f; textAlign = Paint.Align.CENTER }
+    private val tiny = paint(Color.rgb(0x2A, 0x28, 0x24)) { typeface = Radio.SERIF; textSize = 5f * t; textAlign = Paint.Align.CENTER }
+    private val bezel = paint()
+    private val slotPaint = paint(Color.rgb(0x0E, 0x0C, 0x0A))
     private val rocker = paint()
-    private val lamp = paint(Radio.LAMP_ALERT)
+    private val thumb = paint()
+    private val jewel = paint()
+    private val jewelRim = paint(Color.rgb(0x5A, 0x58, 0x52)) { style = Paint.Style.STROKE; strokeWidth = 1.2f * d }
+    private val knob = paint()
+    private val ridge = paint(Color.argb(0xAA, 0, 0, 0)) { strokeWidth = 1f * d }
     private val socket = paint()
     private val hole = paint(Color.rgb(0x0C, 0x0B, 0x0A))
     private val pin = paint(Color.rgb(0x6C, 0x6A, 0x64))
     private val r = RectF()
 
-    private val rowH get() = 9 * t + 19 * d
-    private fun rowTop(i: Int) = 15 * d + i * rowH
+    private val rowH get() = 9 * t + 34 * d
+    private fun rowTop(i: Int) = 14 * d + i * rowH
+    private val moodY get() = rowTop(switches.size) + 8 * d + 5 * t + 17 * d
+    private val moodR get() = 15 * d
 
     override fun onDraw(c: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
         r.set(0f, 0f, w, h)
-        Hardware.plate(c, r, 4 * d, d)
+        Hardware.plate(c, r, 4 * d, d, seed = 11)
         Hardware.screw(c, w / 2, 7 * d, d)
-        for ((i, s) in switches.withIndex()) {
-            val y = rowTop(i)
-            fitText(c, s.first, w / 2, y + 9 * t, label, w - 8 * d)
-            val bx = w / 2 - 8 * d; val by = y + 9 * t + 4 * d
-            r.set(bx - 2 * d, by - 1 * d, bx + 18 * d, by + 10 * d)
-            c.drawRoundRect(r, 2 * d, 2 * d, slotPaint)
-            val on = s.second
-            r.set(bx, by + if (on) 0f else 1.5f * d, bx + 16 * d, by + 8 * d + if (on) 0f else 1.5f * d)
-            rocker.shader = LinearGradient(0f, r.top, 0f, r.bottom,
-                if (on) Color.rgb(0x05, 0x05, 0x05) else Color.rgb(0x45, 0x42, 0x3F),
-                if (on) Color.rgb(0x2A, 0x28, 0x26) else Color.rgb(0x0A, 0x0A, 0x0A), Shader.TileMode.CLAMP)
-            c.drawRoundRect(r, 1.5f * d, 1.5f * d, rocker)
-            if (on) c.drawCircle(r.centerX(), r.centerY(), 1.4f * d, lamp)
-            c.drawText("▸", bx - 6 * d, by + 7 * d, arrow)
-            c.drawText("◂", bx + 22 * d, by + 7 * d, arrow)
+        for ((i, s) in switches.withIndex()) rockerSwitch(c, w, rowTop(i), s.first, s.second, i)
+        moodKnob(c, w / 2, moodY)
+        // The other socket stays empty, as on the real set.
+        val sy = moodY + moodR + 5 * t + 26 * d
+        if (sy + 10 * d < h) {
+            val cx = w / 2
+            socket.shader = LinearGradient(cx - 10 * d, sy - 10 * d, cx + 10 * d, sy + 10 * d,
+                Color.rgb(0xE0, 0xDE, 0xD6), Color.rgb(0x6A, 0x68, 0x62), Shader.TileMode.CLAMP)
+            c.drawCircle(cx, sy, 10 * d, socket)
+            c.drawCircle(cx, sy, 6 * d, hole)
+            c.drawCircle(cx, sy, 2.2f * d, pin)
         }
-        // Two round sockets, filling whatever height is left below the switches.
-        val top = rowTop(switches.size) + 4 * d
-        val gap = ((h - top) / 2).coerceAtLeast(22 * d)
-        for (k in 0..1) {
-            val cx = w / 2; val cy = top + gap * (k + 0.5f)
-            if (cy + 10 * d > h) break
-            socket.shader = LinearGradient(cx - 10 * d, cy - 10 * d, cx + 10 * d, cy + 10 * d,
-                Color.rgb(0xF0, 0xEE, 0xE6), Color.rgb(0x77, 0x75, 0x6E), Shader.TileMode.CLAMP)
-            c.drawCircle(cx, cy, 10 * d, socket)
-            c.drawCircle(cx, cy, 6 * d, hole)
-            c.drawCircle(cx, cy, 2.2f * d, pin)
+    }
+
+    /** A big bakelite rocker in a chrome escutcheon, with a jewel lamp above it. */
+    private fun rockerSwitch(c: Canvas, w: Float, top: Float, name: String, on: Boolean, i: Int) {
+        val cx = w / 2
+        val base = top + 9 * t
+        fitText(c, name, cx, base, label, w - 10 * d)
+        Wear.rub(c, RectF(cx - w * 0.3f, base - 9 * t, cx + w * 0.3f, base), 40 + i, d, Color.rgb(0xC8, 0xC5, 0xBA), 2)
+        // Jewel lamp, lit when the switch is on.
+        val jy = base + 7 * d
+        jewel.shader = RadialGradient(cx - 0.8f * d, jy - 0.8f * d, 4 * d,
+            if (on) intArrayOf(Color.WHITE, Mood.LAMP, Color.rgb(0xB0, 0x50, 0x10)) else intArrayOf(Color.rgb(0x70, 0x50, 0x38), Color.rgb(0x40, 0x28, 0x18), Color.rgb(0x20, 0x14, 0x0C)),
+            null, Shader.TileMode.CLAMP)
+        c.drawCircle(cx, jy, 3.2f * d, jewel); c.drawCircle(cx, jy, 3.2f * d, jewelRim)
+        // Chrome escutcheon with two screws.
+        val ey = jy + 6 * d
+        r.set(cx - 24 * d, ey, cx + 24 * d, ey + 20 * d)
+        bezel.shader = LinearGradient(r.left, r.top, r.right, r.bottom, intArrayOf(Color.rgb(0xEC, 0xEA, 0xE2), Color.rgb(0x80, 0x7E, 0x76), Color.rgb(0xC4, 0xC2, 0xBA)),
+            null, Shader.TileMode.CLAMP)
+        c.drawRoundRect(r, 4 * d, 4 * d, bezel)
+        Hardware.screw(c, r.left + 5 * d, r.centerY(), d, 1.8f)
+        Hardware.screw(c, r.right - 5 * d, r.centerY(), d, 1.8f)
+        tiny.color = Color.rgb(0x2A, 0x28, 0x24)
+        c.drawText("I", cx - 13 * d, r.top - 1.5f * d, tiny); c.drawText("O", cx + 13 * d, r.top - 1.5f * d, tiny)
+        // Slot and paddle; the paddle tips towards whichever side is pressed.
+        val slot = RectF(cx - 14 * d, r.top + 3 * d, cx + 14 * d, r.bottom - 3 * d)
+        c.drawRoundRect(slot, 2 * d, 2 * d, slotPaint)
+        val pad = RectF(slot.left + 1.5f * d, slot.top + 1.5f * d, slot.right - 1.5f * d, slot.bottom - 1.5f * d)
+        val mid = pad.centerX()
+        // Pressed half darker and lower, raised half catching the light.
+        rocker.shader = LinearGradient(pad.left, 0f, pad.right, 0f,
+            if (on) intArrayOf(Color.rgb(0x0A, 0x07, 0x05), Color.rgb(0x16, 0x10, 0x0C), Color.rgb(0x4A, 0x3A, 0x2E), Color.rgb(0x22, 0x18, 0x12))
+            else intArrayOf(Color.rgb(0x22, 0x18, 0x12), Color.rgb(0x4A, 0x3A, 0x2E), Color.rgb(0x16, 0x10, 0x0C), Color.rgb(0x0A, 0x07, 0x05)),
+            floatArrayOf(0f, 0.48f, 0.52f, 1f), Shader.TileMode.CLAMP)
+        c.drawRoundRect(pad, 2 * d, 2 * d, rocker)
+        // Shiny thumb-worn patch on the raised half.
+        val tx = if (on) mid + pad.width() * 0.22f else mid - pad.width() * 0.22f
+        thumb.shader = RadialGradient(tx, pad.centerY(), pad.height() * 0.6f, Color.argb(60, 0xFF, 0xE8, 0xD0), Color.argb(0, 0xFF, 0xE8, 0xD0), Shader.TileMode.CLAMP)
+        c.drawCircle(tx, pad.centerY(), pad.height() * 0.6f, thumb)
+        c.save(); c.clipRect(r)
+        Wear.scratches(c, r, 70 + i, 6, d, alpha = 50)
+        c.restore()
+    }
+
+    /** Bakelite knob with a pointer and a jewel; turned to ON, the room light goes down. */
+    private fun moodKnob(c: Canvas, x: Float, y: Float) {
+        val top = y - moodR - 8 * d - 5 * t
+        fitText(c, "MOOD LIGHT", x, top + 4 * t, label.apply { textSize = 7f * t }, width - 8 * d)
+        label.textSize = 9f * t
+        tiny.color = Color.rgb(0x2A, 0x28, 0x24)
+        c.drawText("OFF", x - moodR - 5 * d, y + moodR + 6 * d, tiny)
+        c.drawText("ON", x + moodR + 5 * d, y + moodR + 6 * d, tiny)
+        socket.shader = LinearGradient(x - moodR * 1.25f, y - moodR * 1.25f, x + moodR * 1.25f, y + moodR * 1.25f,
+            Color.rgb(0xE0, 0xDE, 0xD6), Color.rgb(0x6A, 0x68, 0x62), Shader.TileMode.CLAMP)
+        c.drawCircle(x, y, moodR * 1.2f, socket)
+        knob.shader = RadialGradient(x - moodR * 0.3f, y - moodR * 0.35f, moodR * 1.3f, intArrayOf(Color.rgb(0x5A, 0x40, 0x2E), Color.rgb(0x2A, 0x1C, 0x14), Color.rgb(0x0E, 0x08, 0x05)),
+            null, Shader.TileMode.CLAMP)
+        c.drawCircle(x, y, moodR, knob)
+        for (k in 0 until 24) {   // knurled edge
+            val a = k / 24.0 * Math.PI * 2
+            c.drawLine(x + moodR * 0.82f * kotlin.math.cos(a).toFloat(), y + moodR * 0.82f * kotlin.math.sin(a).toFloat(),
+                x + moodR * kotlin.math.cos(a).toFloat(), y + moodR * kotlin.math.sin(a).toFloat(), ridge)
         }
+        // Pointer: left for OFF, right for ON.
+        val a = Math.toRadians(if (mood) 225.0 + 90 else 225.0)
+        val px = kotlin.math.cos(a).toFloat(); val py = kotlin.math.sin(a).toFloat()
+        ridge.color = Color.rgb(0xE8, 0xDC, 0xC0); ridge.strokeWidth = 2f * d
+        c.drawLine(x + px * moodR * 0.25f, y + py * moodR * 0.25f, x + px * moodR * 0.8f, y + py * moodR * 0.8f, ridge)
+        ridge.color = Color.argb(0xAA, 0, 0, 0); ridge.strokeWidth = 1f * d
+        jewel.shader = RadialGradient(x, y, 3.5f * d, if (mood) intArrayOf(Color.WHITE, Mood.LAMP, Color.rgb(0xB0, 0x50, 0x10))
+            else intArrayOf(Color.rgb(0x70, 0x50, 0x38), Color.rgb(0x40, 0x28, 0x18), Color.rgb(0x20, 0x14, 0x0C)), null, Shader.TileMode.CLAMP)
+        c.drawCircle(x, y, 3f * d, jewel)
+    }
+
+    override fun glows(): List<Glow> {
+        val out = ArrayList<Glow>()
+        val w = width.toFloat()
+        for ((i, s) in switches.withIndex()) if (s.second) {
+            val jy = rowTop(i) + 9 * t + 7 * d
+            out += Glow(RectF(w / 2 - 6 * d, jy - 6 * d, w / 2 + 6 * d, jy + 6 * d), Mood.LAMP, 0.9f)
+        }
+        if (mood) out += Glow(RectF(w / 2 - 8 * d, moodY - 8 * d, w / 2 + 8 * d, moodY + 8 * d), Mood.LAMP, 1f)
+        return out
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (e.action == MotionEvent.ACTION_DOWN) return true
         if (e.action == MotionEvent.ACTION_UP) {
-            val i = ((e.y - rowTop(0)) / rowH).toInt()
-            if (i in switches.indices && e.y >= rowTop(0)) {
-                val on = !switches[i].second
-                switches = switches.toMutableList().also { it[i] = it[i].first to on }
-                onToggle?.invoke(i, on)
+            if (kotlin.math.hypot(e.x - width / 2f, e.y - moodY) < moodR * 1.6f) {
+                mood = !mood; onMood?.invoke(mood)
+            } else {
+                val i = ((e.y - rowTop(0)) / rowH).toInt()
+                if (i in switches.indices && e.y >= rowTop(0)) {
+                    val on = !switches[i].second
+                    switches = switches.toMutableList().also { it[i] = it[i].first to on }
+                    onToggle?.invoke(i, on)
+                }
             }
             performClick()
             return true
@@ -251,7 +354,7 @@ class TonePlateView(ctx: Context) : CabinetView(ctx) {
  * (HF, 6m, 2m, 70cm) above a centre pivot, the condition scale (QUIET, HEADS-UP,
  * OPEN) around the top, and a gold horseshoe scale below with the nameplate script.
  */
-class DialView(ctx: Context) : CabinetView(ctx) {
+class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private companion object {
         const val A0 = -150f
         const val A1 = -30f
@@ -315,6 +418,11 @@ class DialView(ctx: Context) : CabinetView(ctx) {
 
     override fun onDraw(c: Canvas) {
         c.drawRoundRect(outer, 22 * d, 22 * d, bezel)
+        // Chrome bezel worn through to the brass underneath, where hands have gripped it.
+        c.save(); c.clipRect(outer)
+        Wear.chips(c, outer, 21, 22, d, Color.argb(170, 0xB8, 0x8A, 0x40))
+        Wear.scratches(c, outer, 21, 18, d, alpha = 60)
+        c.restore()
         c.drawRoundRect(inner, 16 * d, 16 * d, glass)
         c.save()
         c.clipRect(inner)
@@ -407,7 +515,19 @@ class DialView(ctx: Context) : CabinetView(ctx) {
         c.drawCircle(px, py, 2.5f * d, hubCap)
         c.restore()
         c.drawRoundRect(inner, 16 * d, 16 * d, glare)
+        // Old glass: faintly yellowed, dusty, with a couple of long scratches.
+        c.save(); c.clipRect(inner)
+        fill.color = Color.argb(18, 0xD8, 0xB0, 0x50); c.drawRect(inner, fill)
+        if (Mood.on) {   // the dial lamp turned up in the dark: a warm wash over the glass
+            fill.color = Color.argb(40, 0xFF, 0x9A, 0x3C); c.drawRect(inner, fill)
+        }
+        Wear.dust(c, inner, 22, 160, d, alpha = 70)
+        Wear.scratches(c, inner, 23, 3, d, alpha = 45)
+        c.restore()
     }
+
+    override fun glows(): List<Glow> = listOf(Glow(RectF(inner), Mood.AMBER, 1f, screen = true, radius = 16 * d))
+    private val fill = paint()
 
     private fun levelPos(level: Int) = when (level) { 2 -> 0.8f; 1 -> 0.5f; else -> 0.2f }
 
@@ -432,7 +552,7 @@ class DialView(ctx: Context) : CabinetView(ctx) {
  * that band on a bracket rule, laid out like a "best reception" chart. One button is
  * always down; pressing another pops the last one up.
  */
-class BandPlateView(ctx: Context) : CabinetView(ctx) {
+class BandPlateView(ctx: Context) : CabinetView(ctx), MoodGlow {
     /** label, status word, lamp colour (or null for unlit) */
     data class Row(val label: String, val status: String, val lamp: Int?)
 
@@ -462,7 +582,7 @@ class BandPlateView(ctx: Context) : CabinetView(ctx) {
     override fun onDraw(c: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
         r.set(0f, 0f, w, h)
-        Hardware.plate(c, r, 5 * d, d)
+        Hardware.plate(c, r, 5 * d, d, seed = 31)
         val bx = w * 0.53f; val lineX = w * 0.64f
         fitText(c, "WAVEBAND", w * 0.28f, 8 * t + 7 * d, head, w * 0.42f)
         fitText(c, "CONDITIONS", (lineX + w) / 2, 8 * t + 7 * d, head, w - lineX - 10 * d)
@@ -489,6 +609,16 @@ class BandPlateView(ctx: Context) : CabinetView(ctx) {
             fitText(c, row.status, lineX + 20 * d, cy + status.textSize * 0.36f, status, w - lineX - 28 * d)
         }
         for ((x, y) in listOf(8 * d to 8 * d, w - 8 * d to 8 * d, 8 * d to h - 8 * d, w - 8 * d to h - 8 * d)) Hardware.screw(c, x, y, d)
+        // Lettering rubbed thin where fingers find the buttons.
+        Wear.rub(c, RectF(0f, top, w * 0.5f, h), 32, d, Color.rgb(0xC8, 0xC5, 0xBA), 4)
+    }
+
+    override fun glows(): List<Glow> {
+        val lineX = width * 0.64f
+        return rows.withIndex().filter { it.value.lamp != null }.map { (i, row) ->
+            val cy = top + i * rowH + rowH / 2
+            Glow(RectF(lineX + 7 * d, cy - 6 * d, lineX + 19 * d, cy + 6 * d), row.lamp!!, 0.8f)
+        }
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
@@ -516,6 +646,8 @@ class LogChartView(ctx: Context) : CabinetView(ctx) {
 
     private val bg = paint(Color.rgb(0x0A, 0x09, 0x08))
     private val paper = paint(Radio.PAPER)
+    private val paperRect = RectF()
+
     private val speck = paint()
     private val fine = paint(Color.argb(0x73, 0xA0, 0x82, 0x50)) { strokeWidth = 0.5f * d }
     private val bold = paint(Color.argb(0xCC, 0x5A, 0x46, 0x28)) { strokeWidth = 0.9f * d }
@@ -540,9 +672,6 @@ class LogChartView(ctx: Context) : CabinetView(ctx) {
         setMeasuredDimension(MeasureSpec.getSize(w), (head + Bands.ALL.size * rowH + keyH).toInt())
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
-        // On the receiver the chart is backlit amber, like its dials.
-        paper.shader = if (Radio.receiver) RadialGradient(w / 2f, h * 0.9f, w * 0.8f,
-            intArrayOf(Radio.AMBER_LIGHT, Radio.AMBER, Radio.AMBER_DARK), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP) else null
         val r = kotlin.random.Random(11)
         specks.clear()
         repeat((w * h / (30 * d * d)).toInt().coerceAtMost(900)) {
@@ -555,12 +684,15 @@ class LogChartView(ctx: Context) : CabinetView(ctx) {
         c.drawRect(0f, 0f, w, h, bg)
         val gx = labW; val gw = w - labW - 6 * d; val gy = head; val gh = Bands.ALL.size * rowH
         c.drawRect(gx, gy, gx + gw, gy + gh, paper)
+        paperRect.set(gx, gy, gx + gw, gy + gh)
+        // A well-thumbed card: a coffee ring and grubby edges.
+        c.save(); c.clipRect(paperRect)
+        Wear.stain(c, gx + gw * 0.8f, gy + gh * 0.55f, gh * 0.36f, d)
+        Wear.grime(c, paperRect, d, depth = 8f, alpha = 45)
+        c.restore()
         for (s in specks) {
             speck.color = Color.argb((s[3] * 255).toInt(), 0x96, 0x78, 0x46)
             c.drawCircle(gx + s[0] * gw, gy + s[1] * gh, s[2], speck)
-        }
-        if (Radio.aircraft) {   // a ruled log card: blue fine lines, red bold rules
-            fine.color = Color.argb(0x90, 0x8A, 0xA0, 0xC8); bold.color = Color.argb(0xCC, 0xC8, 0x50, 0x50)
         }
         for (k in 0..48) c.drawLine(gx + gw * k / 48, gy, gx + gw * k / 48, gy + gh, fine)
         for (k in 0..Bands.ALL.size * 2) c.drawLine(gx, gy + gh * k / (Bands.ALL.size * 2), gx + gw, gy + gh * k / (Bands.ALL.size * 2), fine)
@@ -608,7 +740,7 @@ class LogChartView(ctx: Context) : CabinetView(ctx) {
  * on it, and the reading below. Dims and warms up when retuned; a cursor sweeps the
  * chart while a fix is coming in.
  */
-class StationLogView(ctx: Context) : CabinetView(ctx) {
+class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private var glow = 1f
     private var sweep = 0f
     private var pulse = 0f
@@ -633,6 +765,17 @@ class StationLogView(ctx: Context) : CabinetView(ctx) {
     private val mono = paint { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD); textSize = 12.5f * t; textAlign = Paint.Align.CENTER }
     private val note = paint { typeface = Typeface.MONOSPACE; textSize = 9 * t; letterSpacing = 0.05f; textAlign = Paint.Align.CENTER }
     private val mapRect = RectF()
+    private val crease = paint { strokeWidth = 0.8f * d }
+
+    /** The red station pin glows in the dark. */
+    override fun glows(): List<Glow> {
+        val out = ArrayList<Glow>()
+        if (!pinLat.isNaN() && !locating) {
+            val x = mapX(pinLon); val y = mapY(pinLat)
+            out += Glow(RectF(x - 5 * d, y - 5 * d, x + 5 * d, y + 5 * d), Color.rgb(0xFF, 0x50, 0x30), 0.7f)
+        }
+        return out
+    }
     private val shapes = ArrayList<Path>()
 
     private val ribbonH get() = 10 * t + 9 * d
@@ -671,35 +814,15 @@ class StationLogView(ctx: Context) : CabinetView(ctx) {
         val w = width.toFloat()
         val cream = Radio.mix(Color.rgb(0x40, 0x3B, 0x33), Radio.CREAM, glow)
         // Title ribbon, like the lid's nameplate band.
-        ribbon.shader = if (Radio.aircraft) LinearGradient(0f, 0f, w, ribbonH,   // brass label plate
-            intArrayOf(Radio.PLATE_LIGHT, Radio.PLATE, Radio.PLATE_DARK), null, Shader.TileMode.CLAMP) else null
         c.drawRoundRect(0f, 0f, w, ribbonH, 2 * d, 2 * d, ribbon)
         c.drawText("STATION LOG", w / 2, ribbonH / 2 + ribbonText.textSize * 0.36f, ribbonText)
 
-        // World chart: cream continents on black (portable), or dark continents on a
-        // backlit amber chart (receiver).
-        if (Radio.aircraft) {
-            // Navigator's chart: white card, blue graticule, grey land with black coastlines.
-            sea.shader = null; sea.color = Color.rgb(0xF4, 0xF1, 0xE6)
-            c.drawRect(mapRect, sea)
-            grid.color = Color.argb(0x90, 0x5E, 0x8F, 0xC8)
-            land.color = Radio.mix(Color.rgb(0x9A, 0x96, 0x8A), Color.rgb(0xD6, 0xD0, 0xC0), glow)
-            coast.color = Radio.INK
-        } else if (Radio.receiver) {
-            sea.shader = RadialGradient(mapRect.centerX(), mapRect.bottom, mapRect.width() * 0.75f,
-                intArrayOf(Radio.mix(Color.rgb(0x50, 0x38, 0x18), Radio.AMBER_LIGHT, glow), Radio.mix(Color.rgb(0x3A, 0x26, 0x10), Radio.AMBER, glow),
-                    Radio.mix(Color.rgb(0x20, 0x14, 0x08), Radio.AMBER_DARK, glow)), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
-            c.drawRect(mapRect, sea)
-            grid.color = Color.argb(0x60, 0x2A, 0x16, 0x06)
-            land.color = Color.argb(0xD0, 0x3A, 0x22, 0x0C)
-            coast.color = Radio.DIAL_INK
-        } else {
-            sea.shader = null; sea.color = Color.rgb(0x0B, 0x0A, 0x09)
-            c.drawRect(mapRect, sea)
-            grid.color = Radio.mix(Color.rgb(0x1E, 0x1B, 0x17), Color.rgb(0x3A, 0x34, 0x2A), glow)
-            land.color = Radio.mix(Color.rgb(0x3A, 0x35, 0x2C), Color.rgb(0xD8, 0xCB, 0xA6), glow)
-            coast.color = Radio.mix(Color.rgb(0x50, 0x48, 0x3A), Radio.CREAM, glow)
-        }
+        // World chart: cream continents on black.
+        sea.shader = null; sea.color = Color.rgb(0x0B, 0x0A, 0x09)
+        c.drawRect(mapRect, sea)
+        grid.color = Radio.mix(Color.rgb(0x1E, 0x1B, 0x17), Color.rgb(0x3A, 0x34, 0x2A), glow)
+        land.color = Radio.mix(Color.rgb(0x3A, 0x35, 0x2C), Color.rgb(0xD8, 0xCB, 0xA6), glow)
+        coast.color = Radio.mix(Color.rgb(0x50, 0x48, 0x3A), Radio.CREAM, glow)
         for (lon in -150..150 step 30) c.drawLine(mapX(lon.toDouble()), mapRect.top, mapX(lon.toDouble()), mapRect.bottom, grid)
         for (lat in -30..60 step 30) c.drawLine(mapRect.left, mapY(lat.toDouble()), mapRect.right, mapY(lat.toDouble()), grid)
         c.save(); c.clipRect(mapRect)
@@ -714,6 +837,13 @@ class StationLogView(ctx: Context) : CabinetView(ctx) {
             c.drawCircle(x, y, 4 * d + pulse * 12 * d, halo)
             c.drawCircle(x, y, 3.6f * d, pin)
         }
+        c.restore()
+        // A chart that's been folded and unfolded many times: crease lines and grubby edges.
+        c.save(); c.clipRect(mapRect)
+        crease.color = Color.argb(36, 255, 255, 255)
+        for (f in listOf(1f / 3, 2f / 3)) c.drawLine(mapRect.left + mapRect.width() * f, mapRect.top, mapRect.left + mapRect.width() * f, mapRect.bottom, crease)
+        c.drawLine(mapRect.left, mapRect.centerY(), mapRect.right, mapRect.centerY(), crease)
+        Wear.grime(c, mapRect, d, depth = 10f, alpha = 50)
         c.restore()
         frame.color = cream
         c.drawRect(mapRect, frame)

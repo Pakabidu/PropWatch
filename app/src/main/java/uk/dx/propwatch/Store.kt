@@ -36,10 +36,9 @@ object Store {
     fun fixNote(ctx: Context): String? = p(ctx).getString("fix_note", null)
     fun saveFixNote(ctx: Context, note: String?) = p(ctx).edit().putString("fix_note", note).apply()
 
-    /** Cabinet style: the 1940s portable (default) or the communications receiver. */
-    fun skin(ctx: Context): Radio.Skin =
-        runCatching { Radio.Skin.valueOf(p(ctx).getString("skin", null) ?: "PORTABLE") }.getOrDefault(Radio.Skin.PORTABLE)
-    fun saveSkin(ctx: Context, skin: Radio.Skin) = p(ctx).edit().putString("skin", skin.name).apply()
+    /** Mood light: the room darkened around a table lamp, dials and lamps glowing warm. */
+    fun moodLight(ctx: Context) = p(ctx).getBoolean("mood_light", false)
+    fun saveMoodLight(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("mood_light", on).apply()
 
     /** Selected waveband button: all, hf, 6m, 2m or 70cm. */
     fun band(ctx: Context): String = p(ctx).getString("band", "all") ?: "all"
