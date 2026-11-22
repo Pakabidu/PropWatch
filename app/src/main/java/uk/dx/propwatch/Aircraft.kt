@@ -179,7 +179,7 @@ class AircraftPanelView(ctx: Context) : CabinetView(ctx), FrontPanel {
         c.drawRoundRect(f, 4 * d, 4 * d, fill); fill.shader = null
         c.save(); c.clipRect(f)
         val px = f.centerX(); val py = f.top + f.height() * 0.95f; val rr = f.height() * 0.72f
-        val a0 = -130f; val a1 = -50f
+        val a0 = -124f; val a1 = -56f   // narrow enough that the end numbers stay on the face
         fun ang(v: Float) = Math.toRadians((a0 + (a1 - a0) * v).toDouble())
         stroke.color = Radio.INK; stroke.strokeWidth = d
         rect.set(px - rr, py - rr, px + rr, py + rr); c.drawArc(rect, a0, a1 - a0, false, stroke)
