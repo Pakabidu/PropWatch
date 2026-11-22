@@ -116,4 +116,37 @@ object Store {
         if (notifiedAt != null) e.putLong("notified_$mode", notifiedAt)
         e.apply()
     }
+
+    // ---------------------------------------------------------------- tropo bands
+
+    /** The station's Maidenhead locator, for working out its ITU region. */
+    fun stationGrid(ctx: Context): String = station(ctx).let { Geo.latLonToLoc(it.lat, it.lon) }
+
+    /**
+     * The user's manual band choices: band id to visible/hidden. Only bands the user has
+     * changed are stored, so the rest keep following the regional default (and follow the
+     * station if it moves to another ITU region).
+     */
+    fun tropoBandOverrides(ctx: Context): Map<String, Boolean> {
+        val s = p(ctx).getString("tropo_bands", null) ?: return emptyMap()
+        return try {
+            val o = JSONObject(s)
+            o.keys().asSequence().associateWith { o.getBoolean(it) }
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    /** Sets a band's visibility; null forgets the choice so the band follows its default again. */
+    fun setTropoBandOverride(ctx: Context, id: String, visible: Boolean?) {
+        val m = tropoBandOverrides(ctx).toMutableMap()
+        if (visible == null) m.remove(id) else m[id] = visible
+        p(ctx).edit().putString("tropo_bands", JSONObject(m as Map<*, *>).toString()).apply()
+    }
+
+    fun clearTropoBandOverrides(ctx: Context) = p(ctx).edit().remove("tropo_bands").apply()
+
+    /** Bands to show: the regional defaults for the station's locator, after the user's choices. */
+    fun visibleTropoBands(ctx: Context): List<TropoBand> =
+        TropoBands.resolveVisibleBands(stationGrid(ctx), tropoBandOverrides(ctx))
 }
