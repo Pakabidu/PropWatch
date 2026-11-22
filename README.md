@@ -2,6 +2,13 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v6.2
+
+- **A little broadcast set under the speaker.** The speaker grille is smaller, and beneath it sits a miniature set in the style of a 1940s portable shortwave receiver: a black dial with gold arcs in a chrome bezel, a needle that swings to the station and a dial lamp that flickers as the valves warm up and glows once it's playing, and an etched chrome plate of three black push-buttons.
+  - **1** — The 1920s Radio Network. **2** — Old Time Radio Service. **3** — your own station: the first press asks for a stream address (and an optional name), saves it and plays it; long-press to change it.
+  - Tap a station to play, tap the lit button again to switch off. It keeps playing in the background with a notification (with a Stop button), pauses for calls and other apps, and stops if headphones are unplugged. The phone's volume keys set the level.
+  - Plays Shoutcast/Icecast-style MP3 and AAC streams (Media3 ExoPlayer). Plain-http streams are allowed, as most old-time radio streams use them.
+
 ## What's new in v6.1
 
 - **Updates itself.** Every time it starts, PropWatch checks for a newer build. If there is one, it downloads it in the background (with a progress notification) and then asks **Update ready — Install now?**. Tapping Install opens Android's installer to confirm. The first time, Android asks you to allow PropWatch to install apps; the app takes you to that switch and carries on when you come back. **Check for updates** uses the same in-app download. Old downloaded updates are tidied away.

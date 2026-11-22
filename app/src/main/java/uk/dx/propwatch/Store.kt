@@ -42,6 +42,12 @@ object Store {
     fun saveUpdateDownload(ctx: Context, id: Long, build: Long) =
         p(ctx).edit().putLong("update_dl_id", id).putLong("update_dl_build", build).apply()
 
+    /** The broadcast set's third, user-chosen station: its stream address and name. */
+    fun customStationUrl(ctx: Context): String? = p(ctx).getString("custom_station_url", null)
+    fun customStationName(ctx: Context): String? = p(ctx).getString("custom_station_name", null)
+    fun saveCustomStation(ctx: Context, url: String, name: String?) = p(ctx).edit()
+        .putString("custom_station_url", url).putString("custom_station_name", name?.takeIf { it.isNotBlank() }).apply()
+
     /** Mood light: the room darkened around a table lamp, dials and lamps glowing warm. */
     fun moodLight(ctx: Context) = p(ctx).getBoolean("mood_light", false)
     fun saveMoodLight(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("mood_light", on).apply()

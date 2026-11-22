@@ -36,6 +36,14 @@ class MainActivity : Activity() {
     private var tonePlate: TonePlateView? = null
     private lateinit var tropoBox: LinearLayout
     private lateinit var moodLight: MoodLightView
+    private var broadcastSet: BroadcastSetView? = null
+    /** Keeps the broadcast set's dial in step with the stream service, and reports a failed tune-in. */
+    private val streamListener: () -> Unit = {
+        broadcastSet?.show(StreamService.state, StreamService.station)
+        if (StreamService.state == StreamService.State.ERROR) StreamService.error?.let {
+            Toast.makeText(this, it, Toast.LENGTH_LONG).show()
+        }
+    }
     private var downloadReceiver: android.content.BroadcastReceiver? = null
     private var pendingInstall = -1L   // build waiting for the user to allow installs
     private lateinit var contentRoot: View
@@ -207,6 +215,8 @@ class MainActivity : Activity() {
             }
         }
         downloadReceiver = receiver
+        StreamService.listen(streamListener)
+        volumeControlStream = android.media.AudioManager.STREAM_MUSIC   // volume keys turn the radio up and down
         androidx.core.content.ContextCompat.registerReceiver(this, receiver,
             android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE),
             androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
@@ -227,9 +237,24 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(256))
         }
-        upper.addView(GrilleView(this).apply {
+        // A smaller speaker, with the little broadcast set tucked in beneath it.
+        val speakerColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.6f)
+        }
+        speakerColumn.addView(GrilleView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(84))
         })
+        val set = BroadcastSetView(this).apply {
+            stations = Stations.all(this@MainActivity)
+            onPress = { i -> pressStation(i) }
+            onLongPress = { i -> if (i == Stations.CUSTOM) askCustomStation() else pressStation(i) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dp(8) }
+            show(StreamService.state, StreamService.station)
+        }
+        broadcastSet = set
+        speakerColumn.addView(set)
+        upper.addView(speakerColumn)
         val tonePlateView = TonePlateView(this).apply {
             switches = toneSwitches()
             onToggle = { i, on -> toggle(i, on) }
@@ -625,6 +650,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        StreamService.unlisten(streamListener)
         downloadReceiver?.let { runCatching { unregisterReceiver(it) } }
         super.onDestroy()
     }
@@ -755,6 +781,60 @@ class MainActivity : Activity() {
                     fixNote(l) + " · NOT USED (GPS OFF)", l.latitude, l.longitude, true)
             }
         }
+    }
+
+    // ---- The broadcast set ----
+
+    /** A station button: play it, or switch off if it's the one playing. The custom one asks for its address first. */
+    private fun pressStation(i: Int) {
+        Sfx.detent(this)
+        val on = StreamService.station == i &&
+            (StreamService.state == StreamService.State.PLAYING || StreamService.state == StreamService.State.TUNING)
+        if (on) { StreamService.stop(this); return }
+        val st = Stations.all(this)[i]
+        if (st.url == null) askCustomStation() else StreamService.play(this, i, st)
+    }
+
+    /** Asks for the third station's stream address (and an optional name), saves it and tunes in. */
+    private fun askCustomStation(prefillUrl: String? = null, prefillName: String? = null) {
+        val urlField = EditText(this).apply {
+            hint = "http://… stream address"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setText(prefillUrl ?: Store.customStationUrl(this@MainActivity) ?: "")
+            textSize = 18f
+        }
+        val nameField = EditText(this).apply {
+            hint = "Name (optional)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            setText(prefillName ?: Store.customStationName(this@MainActivity) ?: "")
+            textSize = 18f
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(urlField); addView(nameField)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Your station")
+            .setMessage("Enter the stream address of an internet radio station (Shoutcast, Icecast or similar). " +
+                "It's saved on the third button; long-press the button to change it.")
+            .setView(box)
+            .setPositiveButton("Save & play") { _, _ ->
+                val url = urlField.text.toString().trim()
+                val name = nameField.text.toString().trim()
+                if (!Stations.valid(url)) {
+                    Toast.makeText(this, "That doesn't look like a stream address (it should start http:// or https://).",
+                        Toast.LENGTH_LONG).show()
+                    askCustomStation(url, name)
+                    return@setPositiveButton
+                }
+                Store.saveCustomStation(this, url, name)
+                val stations = Stations.all(this)
+                broadcastSet?.stations = stations
+                StreamService.play(this, Stations.CUSTOM, stations[Stations.CUSTOM])
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     // ---- Updates: checked on every start, downloaded in the background, installed on request ----
