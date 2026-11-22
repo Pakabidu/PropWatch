@@ -20,6 +20,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 
@@ -190,6 +191,8 @@ class MainActivity : Activity() {
             setPadding(0, dp(4), 0, 0)
             text = "PROPWATCH ${Updater.currentName(this@MainActivity)} · BUILD ${Updater.currentBuild(this@MainActivity)}"
         })
+        lid.addView(section("Support PropWatch"))
+        lid.addView(donatePanel())
         lid.addView(TextView(this).apply {
             textSize = 12f; setTextColor(Radio.CREAM); alpha = 0.55f; setPadding(0, dp(16), 0, 0)
             text = "Alerts only fire when a threshold is met: tropo ducting forecast along the North Sea paths " +
@@ -276,6 +279,92 @@ class MainActivity : Activity() {
                 })
             }
         }
+    }
+
+    /**
+     * The coffee fund: a cheeky one-pound ask, then a slider for £1–£10 and a
+     * PayPal button. Entirely optional; nothing in the app is locked behind it.
+     */
+    private fun donatePanel(): View {
+        var pounds = Donate.MIN
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(TextView(this).apply {
+            textSize = 14f; typeface = Typeface.SERIF; setTextColor(Radio.CREAM); setPadding(0, dp(2), 0, dp(4))
+            text = "PropWatch is free and always will be. It runs on valves, solder and strong coffee, though. " +
+                "If it's caught you an opening, would you stand the operator a £1 cuppa?"
+        })
+        val chooser = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = GradientDrawable().apply { setColor(Color.rgb(0x0A, 0x09, 0x08)); setStroke(dp(1), Radio.GOLD) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+        }
+        val amount = TextView(this).apply {
+            textSize = 34f; typeface = Radio.SERIF; setTextColor(Radio.GOLD); gravity = Gravity.CENTER
+        }
+        val cups = TextView(this).apply {
+            textSize = 10f; typeface = Radio.SERIF; letterSpacing = 0.3f; setTextColor(Radio.CREAM); gravity = Gravity.CENTER
+        }
+        val quip = TextView(this).apply {
+            textSize = 13f; typeface = Radio.SERIF_ITALIC; setTextColor(Radio.CREAM); alpha = 0.85f
+            gravity = Gravity.CENTER; setPadding(0, dp(6), 0, dp(4)); minLines = 2
+        }
+        lateinit var pay: Button
+        fun show() {
+            amount.text = "£$pounds"
+            cups.text = Donate.cups(pounds)
+            quip.text = Donate.quip(pounds)
+            pay.text = "Donate £$pounds with PayPal"
+        }
+        val slider = SeekBar(this).apply {
+            max = Donate.MAX - Donate.MIN
+            progress = 0
+            progressTintList = ColorStateList.valueOf(Radio.GOLD)
+            thumbTintList = ColorStateList.valueOf(Radio.CREAM)
+            progressBackgroundTintList = ColorStateList.valueOf(Radio.CHROME_DARK)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                    if (Donate.MIN + p != pounds) { pounds = Donate.MIN + p; show(); if (fromUser) Sfx.detent(this@MainActivity) }
+                }
+                override fun onStartTrackingTouch(sb: SeekBar) {}
+                override fun onStopTrackingTouch(sb: SeekBar) {}
+            })
+        }
+        val ends = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(8), 0, dp(8), 0)
+            addView(TextView(context).apply {
+                text = "£${Donate.MIN}"; textSize = 10f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(TextView(context).apply {
+                text = "£${Donate.MAX}"; textSize = 10f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
+            })
+        }
+        pay = radioButton("") {
+            startActivity(Intent(Intent.ACTION_VIEW, Donate.url(pounds)))
+        }
+        chooser.addView(amount); chooser.addView(cups); chooser.addView(quip)
+        chooser.addView(slider); chooser.addView(ends); chooser.addView(pay)
+        chooser.addView(TextView(this).apply {
+            textSize = 10.5f; setTextColor(Radio.CREAM); alpha = 0.6f; gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
+            text = "Opens PayPal in your browser. Pay by card or PayPal account; nothing is charged in the app."
+        })
+        show()
+
+        val ask = radioButton("Buy me a coffee — £1") {}
+        ask.setOnClickListener {
+            Sfx.click(this)
+            val open = chooser.visibility != View.VISIBLE
+            chooser.visibility = if (open) View.VISIBLE else View.GONE
+            ask.text = if (open) "Maybe later" else "Buy me a coffee — £1"
+        }
+        box.addView(ask)
+        box.addView(chooser)
+        return box
     }
 
     /**
