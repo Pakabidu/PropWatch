@@ -671,80 +671,94 @@ class BandPlateView(ctx: Context) : CabinetView(ctx), MoodGlow {
 }
 
 /**
- * The lid's log chart: cream graph paper with a row per band and the last 24 hours
- * across, marking every check: green open, amber heads-up, a dash for quiet,
- * a red cross where the band couldn't be checked.
+ * The DX log: the last 24 hours of checks, shown behind a backlit glass screen in a
+ * worn chrome bezel, glowing warm amber like the broadcast set's dial. Gold rules and
+ * lettering, lit dots for each check, old yellowed glass with dust and scratches.
  */
 class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
     var entries: List<Store.LogEntry> = emptyList()
         set(v) { field = v; invalidate() }
 
-    private val bg = paint(Color.rgb(0x0A, 0x09, 0x08))
-    private val paper = paint(Radio.PAPER)
-    private val paperRect = RectF()
-    private val light = paint()
+    private val bezel = paint()
+    private val face = paint()
     private val bulb = paint()
-    private val hood = paint()
-    private val hoodPath = Path()
+    private val glare = paint()
+    private val fill = paint()
+    private val outer = RectF()
+    private val inner = RectF()
+    private val clip = Path()
 
-    /** The chart lamp lights the card, so it glows in the dark like a screen; plus the bulb itself. */
-    override fun glows(): List<Glow> = if (paperRect.isEmpty) emptyList() else listOf(
-        Glow(RectF(paperRect), Color.rgb(0xFF, 0xD0, 0x80), 0.55f, screen = true),
-        Glow(RectF(labW / 2 - 6 * d, paperRect.top - 8 * d, labW / 2 + 6 * d, paperRect.top + 4 * d), Mood.LAMP, 1f))
+    override fun glows(): List<Glow> = if (inner.isEmpty) emptyList() else listOf(
+        Glow(RectF(inner), Mood.AMBER, 1.1f, screen = true, radius = 6 * d))
 
-    private val speck = paint()
-    private val fine = paint(Color.argb(0x73, 0xA0, 0x82, 0x50)) { strokeWidth = 0.5f * d }
-    private val bold = paint(Color.argb(0xCC, 0x5A, 0x46, 0x28)) { strokeWidth = 0.9f * d }
-    private val scaleText = paint(Radio.CREAM) { typeface = Radio.SERIF; textSize = 7 * t; textAlign = Paint.Align.CENTER }
-    private val rowText = paint(Radio.CREAM) { typeface = Radio.SERIF; textSize = 9 * t; letterSpacing = 0.1f; textAlign = Paint.Align.CENTER }
-    private val key = paint(Radio.CREAM) { typeface = Typeface.SERIF; textSize = 7 * t; letterSpacing = 0.08f; textAlign = Paint.Align.CENTER }
-    private val diamond = paint(Radio.CREAM)
-    private val open = paint(Color.rgb(0x2E, 0x8B, 0x57))
-    private val openRim = paint(Color.rgb(0x11, 0x22, 0x33)) { style = Paint.Style.STROKE; strokeWidth = 0.8f * d }
-    private val heads = paint(Color.rgb(0xD9, 0x8A, 0x1E))
-    private val quiet = paint(Color.argb(0xBF, 0x28, 0x1E, 0x14)) { strokeWidth = 1.2f * d }
-    private val fail = paint(Color.rgb(0xB3, 0x26, 0x1E)) { strokeWidth = 1.2f * d }
+    private val fine = paint(Color.argb(0x50, 0xE8, 0xB8, 0x60)) { strokeWidth = 0.5f * d }
+    private val bold = paint(Color.argb(0xB0, 0xE8, 0xC0, 0x70)) { strokeWidth = 0.9f * d }
+    private val scaleText = paint(PALE_GOLD) { typeface = Radio.SERIF; textSize = 7 * t; textAlign = Paint.Align.CENTER }
+    private val rowText = paint(PALE_GOLD) { typeface = Radio.SERIF; textSize = 9 * t; letterSpacing = 0.1f; textAlign = Paint.Align.CENTER }
+    private val key = paint(PALE_GOLD) { typeface = Typeface.SERIF; textSize = 7 * t; letterSpacing = 0.08f; textAlign = Paint.Align.CENTER }
+    private val diamond = paint(PALE_GOLD)
+    private val dot = paint()
+    private val halo = paint()
+    private val quiet = paint(Color.argb(0xC0, 0xE8, 0xC0, 0x70)) { strokeWidth = 1.2f * d }
+    private val fail = paint(Color.rgb(0xFF, 0x5A, 0x3A)) { strokeWidth = 1.3f * d }
     private val dpath = Path()
-    private val specks = ArrayList<FloatArray>()
 
+    private val rim get() = 8 * d
+    private val pad get() = scaleText.measureText("NOW") / 2 + 4 * d
     private val head get() = 7 * t + 10 * d
     private val labW get() = 26 * t
     private val rowH get() = maxOf(22 * d, 14 * t)
     private val keyH get() = 7 * t * 2.6f + 6 * d
 
     override fun onMeasure(w: Int, h: Int) =
-        setMeasuredDimension(MeasureSpec.getSize(w), (head + Bands.ALL.size * rowH + keyH).toInt())
+        setMeasuredDimension(MeasureSpec.getSize(w), (2 * rim + head + Bands.ALL.size * rowH + keyH).toInt())
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
-        val r = kotlin.random.Random(11)
-        specks.clear()
-        repeat((w * h / (30 * d * d)).toInt().coerceAtMost(900)) {
-            specks += floatArrayOf(r.nextFloat(), r.nextFloat(), (0.6f + r.nextFloat() * 1.4f) * d, 0.05f + r.nextFloat() * 0.07f)
-        }
+        outer.set(0f, 0f, w.toFloat(), h.toFloat())
+        inner.set(rim, rim, w - rim, h - rim)
+        bezel.shader = LinearGradient(0f, 0f, w.toFloat(), h.toFloat(),
+            intArrayOf(Color.rgb(0xF0, 0xF0, 0xEC), Radio.CHROME_DARK, Color.rgb(0xDA, 0xDA, 0xD4), Color.rgb(0x50, 0x50, 0x4C)),
+            null, Shader.TileMode.CLAMP)
+        // Backlit from below, like the broadcast set's dial with its lamp full on.
+        face.shader = RadialGradient(inner.centerX(), inner.bottom, maxOf(inner.width() * 0.75f, inner.height() * 1.3f),
+            intArrayOf(Color.rgb(0xA8, 0x70, 0x2C), Color.rgb(0x58, 0x36, 0x14), Color.rgb(0x1E, 0x12, 0x08)),
+            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        clip.reset(); clip.addRoundRect(inner, 6 * d, 6 * d, Path.Direction.CW)
+        glare.shader = LinearGradient(inner.left, inner.top, inner.right, inner.bottom,
+            intArrayOf(Color.argb(0x1C, 255, 255, 255), Color.argb(0x08, 255, 255, 255), Color.argb(0, 255, 255, 255), Color.argb(0, 255, 255, 255)),
+            floatArrayOf(0f, 0.3f, 0.31f, 1f), Shader.TileMode.CLAMP)
+    }
+
+    private fun drawBulb(c: Canvas, x: Float, y: Float, r: Float, a: Int) {
+        bulb.shader = RadialGradient(x, y, r, Color.argb(a, 0xFF, 0xD8, 0x90), Color.argb(0, 0xFF, 0xC0, 0x60), Shader.TileMode.CLAMP)
+        c.drawRect(inner, bulb)
     }
 
     override fun onDraw(c: Canvas) {
-        val w = width.toFloat(); val h = height.toFloat()
-        c.drawRect(0f, 0f, w, h, bg)
-        val gx = labW; val gw = w - labW - 6 * d; val gy = head; val gh = Bands.ALL.size * rowH
-        c.drawRect(gx, gy, gx + gw, gy + gh, paper)
-        paperRect.set(gx, gy, gx + gw, gy + gh)
-        // A well-thumbed card: a coffee ring and grubby edges.
-        c.save(); c.clipRect(paperRect)
-        Wear.stain(c, gx + gw * 0.8f, gy + gh * 0.55f, gh * 0.36f, d)
-        Wear.grime(c, paperRect, d, depth = 8f, alpha = 45)
+        c.drawRoundRect(outer, 10 * d, 10 * d, bezel)
+        // Chrome worn through to brass where it's been handled.
+        c.save(); c.clipRect(outer)
+        Wear.chips(c, outer, 31, 14, d, Color.argb(170, 0xB8, 0x8A, 0x40))
+        Wear.scratches(c, outer, 32, 10, d, alpha = 60)
         c.restore()
-        for (s in specks) {
-            speck.color = Color.argb((s[3] * 255).toInt(), 0x96, 0x78, 0x46)
-            c.drawCircle(gx + s[0] * gw, gy + s[1] * gh, s[2], speck)
-        }
+
+        c.save()
+        c.clipPath(clip)
+        c.drawRect(inner, face)
+        // Two bulbs behind the glass, low down, each throwing a pool of light.
+        val bulbA = if (Mood.on) 150 else 120
+        drawBulb(c, inner.left + inner.width() * 0.25f, inner.bottom, inner.height() * 0.8f, bulbA)
+        drawBulb(c, inner.left + inner.width() * 0.75f, inner.bottom, inner.height() * 0.8f, bulbA)
+
+        val gx = inner.left + labW; val gw = inner.right - pad - gx
+        val gy = inner.top + head; val gh = Bands.ALL.size * rowH
         for (k in 0..48) c.drawLine(gx + gw * k / 48, gy, gx + gw * k / 48, gy + gh, fine)
         for (k in 0..Bands.ALL.size * 2) c.drawLine(gx, gy + gh * k / (Bands.ALL.size * 2), gx + gw, gy + gh * k / (Bands.ALL.size * 2), fine)
         for (k in 0..24 step 4) c.drawLine(gx + gw * k / 24, gy, gx + gw * k / 24, gy + gh, bold)
         for (k in 0..Bands.ALL.size) c.drawLine(gx, gy + rowH * k, gx + gw, gy + rowH * k, bold)
         for (k in 0..24) {
             val x = gx + gw * k / 24
-            val base = head - 6 * d
+            val base = gy - 6 * d
             if (k % 4 == 0) c.drawText(if (k == 24) "NOW" else "${k - 24}", x, base, scaleText)
             else if (k % 2 == 0) {
                 val m = base - scaleText.textSize * 0.36f
@@ -752,7 +766,8 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
                 c.drawPath(dpath, diamond)
             }
         }
-        for ((i, b) in Bands.ALL.withIndex()) c.drawText(b.second, labW / 2, gy + rowH * i + rowH / 2 + rowText.textSize * 0.36f, rowText)
+        for ((i, b) in Bands.ALL.withIndex())
+            fitText(c, b.second, inner.left + labW / 2, gy + rowH * i + rowH / 2 + rowText.textSize * 0.36f, rowText, labW - 6 * d)
 
         val now = System.currentTimeMillis()
         for (e in entries) {
@@ -762,8 +777,8 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
             for ((i, b) in Bands.ALL.withIndex()) {
                 val y = gy + rowH * i + rowH / 2
                 when (e.levels[b.first] ?: 0) {
-                    2 -> { c.drawCircle(x, y, 4.2f * d, open); c.drawCircle(x, y, 4.2f * d, openRim) }
-                    1 -> c.drawCircle(x, y, 3.6f * d, heads)
+                    2 -> lit(c, x, y, 4.2f * d, OPEN_LAMP)
+                    1 -> lit(c, x, y, 3.6f * d, HEADS_LAMP)
                     0 -> c.drawLine(x - 2.5f * d, y, x + 2.5f * d, y, quiet)
                     else -> {
                         c.drawLine(x - 2.5f * d, y - 2.5f * d, x + 2.5f * d, y + 2.5f * d, fail)
@@ -772,28 +787,34 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
                 }
             }
         }
-        // The chart lamp: a little hooded lamp at the card's top-left corner, throwing a
-        // warm pool of light across the paper.
-        val lx = labW / 2; val ly = gy - 2 * d
-        light.shader = RadialGradient(lx + gw * 0.1f, gy, gw * 1.05f,
-            intArrayOf(Color.argb(if (Mood.on) 110 else 60, 0xFF, 0xD8, 0x90), Color.argb(if (Mood.on) 40 else 18, 0xFF, 0xC8, 0x70),
-                Color.argb(0, 0xFF, 0xC8, 0x70)), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
-        c.save(); c.clipRect(paperRect); c.drawRect(paperRect, light); c.restore()
-        bulb.shader = RadialGradient(lx, ly + 2 * d, 7 * d, intArrayOf(Color.WHITE, Color.rgb(0xFF, 0xD0, 0x80), Color.argb(0, 0xFF, 0xB0, 0x50)),
-            null, Shader.TileMode.CLAMP)
-        c.drawCircle(lx, ly + 2 * d, 7 * d, bulb)
-        hood.shader = LinearGradient(lx - 9 * d, 0f, lx + 9 * d, 0f,
-            intArrayOf(Color.rgb(0x6A, 0x50, 0x28), Color.rgb(0xD9, 0xB5, 0x6A), Color.rgb(0x5A, 0x40, 0x1C)), null, Shader.TileMode.CLAMP)
-        hoodPath.reset()
-        hoodPath.moveTo(lx - 9 * d, ly); hoodPath.lineTo(lx + 9 * d, ly)
-        hoodPath.lineTo(lx + 5 * d, ly - 6 * d); hoodPath.lineTo(lx - 5 * d, ly - 6 * d); hoodPath.close()
-        c.drawPath(hoodPath, hood)
-        c.drawRect(lx - 1.2f * d, ly - 10 * d, lx + 1.2f * d, ly - 6 * d, hood)   // the stem
 
-        // Key, on two lines so it stays large.
         val k1 = gy + gh + 3 * d + key.textSize
-        fitText(c, if (entries.isEmpty()) "HOURS AGO · CHECKS WILL BE LOGGED HERE" else "HOURS AGO", w / 2, k1, key, w - 8 * d)
-        if (entries.isNotEmpty()) fitText(c, "● OPEN   ● HEADS-UP   – QUIET   × NO DATA", w / 2, k1 + key.textSize * 1.4f, key, w - 8 * d)
+        fitText(c, if (entries.isEmpty()) "HOURS AGO · CHECKS WILL BE LOGGED HERE" else "HOURS AGO", inner.centerX(), k1, key, inner.width() - 8 * d)
+        if (entries.isNotEmpty()) fitText(c, "● OPEN   ● HEADS-UP   – QUIET   × NO DATA", inner.centerX(), k1 + key.textSize * 1.4f, key, inner.width() - 8 * d)
+
+        // Old glass: yellowed, a glare across the top corner, dust, a few scratches, grimy edges.
+        fill.color = Color.argb(22, 0xD8, 0xB0, 0x50); c.drawRect(inner, fill)
+        if (Mood.on) { fill.color = Color.argb(36, 0xFF, 0x9A, 0x3C); c.drawRect(inner, fill) }
+        c.drawRect(inner, glare)
+        Wear.grime(c, inner, d, depth = 10f, alpha = 70)
+        Wear.dust(c, inner, 33, 140, d, alpha = 65)
+        Wear.scratches(c, inner, 34, 3, d, alpha = 40)
+        c.restore()
+    }
+
+    /** A check mark that glows on the screen: a soft halo and a bright core. */
+    private fun lit(c: Canvas, x: Float, y: Float, r: Float, col: Int) {
+        halo.shader = RadialGradient(x, y, r * 2.4f, Color.argb(0x90, Color.red(col), Color.green(col), Color.blue(col)),
+            Color.argb(0, Color.red(col), Color.green(col), Color.blue(col)), Shader.TileMode.CLAMP)
+        c.drawCircle(x, y, r * 2.4f, halo)
+        dot.color = col; c.drawCircle(x, y, r, dot)
+        dot.color = Color.argb(0xB0, 255, 0xF4, 0xD8); c.drawCircle(x - r * 0.25f, y - r * 0.25f, r * 0.4f, dot)
+    }
+
+    private companion object {
+        val PALE_GOLD = Color.rgb(0xFF, 0xE2, 0xA6)
+        val OPEN_LAMP = Color.rgb(0x6C, 0xF0, 0x8A)
+        val HEADS_LAMP = Color.rgb(0xFF, 0xB0, 0x40)
     }
 }
 

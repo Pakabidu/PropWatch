@@ -16,7 +16,7 @@ It looks and sounds like a well-used 1940s portable shortwave set: black alligat
 ## In the lid
 
 - **Station log:** a world chart with your station pinned, your town, coordinates and Maidenhead locator. **Check my location** takes a fresh fix (with a direction-finding sweep and "QTH?" in Morse).
-- **DX log:** the last 24 hours of checks for each band on a lit chart card.
+- **DX log:** the last 24 hours of checks for each band, behind a backlit glass screen glowing warm amber like the broadcast dial.
 - **Readings**, **Sources** (links to the maps and forecasts behind the checks), **Tropo bands**, **Settings** and **Support PropWatch**.
 
 ## What it checks
