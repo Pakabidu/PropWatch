@@ -2,6 +2,22 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v5.1
+
+- **Support PropWatch** in the lid: a cheeky ask to stand the operator a £1 coffee. Tap it to choose any amount from £1 to £10 on a slider (each step gets its own thank-you line), then **Donate with PayPal** opens PayPal's donation page in the browser with the amount and GBP filled in. Donations go to the PayPal account set in `Donate.kt`. Entirely optional: nothing in the app is locked behind it.
+
+## What's new in v5.0
+
+A full visual rework modelled closely on a 1940s portable shortwave set (original artwork; no maker's names or logos):
+
+- **Case:** black crackle-finish leatherette with worn brown cracks, a crazed leather handle on aged copper brackets, and copper latches at the corners.
+- **Front panel:** plain black basket-weave speaker grille in a bevelled recess, beside an etched chrome **tone plate** whose rocker switches really work: **SOUND** (switch sounds), **MONITOR** (background checks) and **GPS** (phone location). They replace the old Settings switches and take effect at once.
+- **Dial:** smoky glass in a chrome bezel. The needle pivots from the centre over gold HF, 6m, 2m and 70cm scales to QUIET, HEADS-UP or OPEN. A gold horseshoe "megacycles" scale curves round below, with the PropWatch script either side.
+- **Waveband plate:** etched chrome with a black push-button per band. Beside each button, like the radio's "best reception" chart, is that band's live condition with a pilot lamp: OPEN, HEADS-UP, QUIET or NO DATA. Pressing a button still filters the readings.
+- **Lid log chart:** cream graph paper with a row per band and the last 24 hours across. Every check is plotted: green open, amber heads-up, a dash for quiet, a red cross for no data.
+- **Lid panels:** readings are boxed like the operating instructions, with cream headers, and the sources are a ruled table you tap to open.
+- **App icon:** the set front-on: crackled case, leather handle on copper brackets, grille, smoky dial with gold horseshoe, and chrome band buttons.
+
 ## What's new in v4.0
 
 A new look inspired by 1940s portable shortwave sets (original artwork; no maker's branding):

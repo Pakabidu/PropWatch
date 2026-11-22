@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
@@ -19,7 +20,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 
@@ -30,7 +31,9 @@ class MainActivity : Activity() {
     private lateinit var results: LinearLayout
     private lateinit var checkBtn: Button
     private lateinit var dial: DialView
-    private lateinit var bandStrip: BandStripView
+    private lateinit var bandPlate: BandPlateView
+    private lateinit var tonePlate: TonePlateView
+    private lateinit var logChart: LogChartView
     private lateinit var updateBtn: Button
     private lateinit var latField: EditText
     private lateinit var lonField: EditText
@@ -59,39 +62,45 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(16), dp(16), dp(32))
         }
 
-        // Carrying handle, then the case front: speaker cloth, dial and band switch, readout, main button.
+        // Carrying handle, then the case front: grille and tone plate, dial, band plate, readout, main button.
         root.addView(HandleView(this))
         val front = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(14))
+            setPadding(dp(12), dp(14), dp(12), dp(14))
             background = GradientDrawable().apply {
-                setColor(Color.argb(0x38, 0, 0, 0)); cornerRadius = dp(16).toFloat(); setStroke(dp(2), Color.BLACK)
+                setColor(Color.argb(0x40, 0, 0, 0)); cornerRadius = dp(16).toFloat(); setStroke(dp(3), Color.rgb(0x05, 0x04, 0x04))
             }
         }
-        front.addView(ClothView(this))
-        val tuning = LinearLayout(this).apply {
+        val upper = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(170))
+        }
+        upper.addView(GrilleView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.6f)
+        })
+        tonePlate = TonePlateView(this).apply {
+            switches = toneSwitches()
+            onToggle = { i, on -> toggle(i, on) }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply { leftMargin = dp(10) }
+        }
+        upper.addView(tonePlate)
+        front.addView(upper)
+        dial = DialView(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
         }
-        dial = DialView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.6f)
-        }
-        tuning.addView(dial)
-        bandStrip = BandStripView(this).apply {
-            bands = BANDS.map { it.first to it.second }
-            selected = BANDS.indexOfFirst { it.first == Store.band(this@MainActivity) }.coerceAtLeast(0)
+        front.addView(dial)
+        bandPlate = BandPlateView(this).apply {
+            selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
             onSelect = { i ->
                 Sfx.click(this@MainActivity)
-                Store.saveBand(this@MainActivity, BANDS[i].first)
+                Store.saveBand(this@MainActivity, BAND_KEYS[i])
                 render(Store.loadReport(this@MainActivity), animateNeedle = true)
             }
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
-                leftMargin = dp(10)
-            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
         }
-        tuning.addView(bandStrip)
-        front.addView(tuning)
+        front.addView(bandPlate)
         status = TextView(this).apply {
             textSize = 12f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.85f
             gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(10))
@@ -101,7 +110,7 @@ class MainActivity : Activity() {
         front.addView(checkBtn)
         root.addView(front)
 
-        // The open lid: readings, sources and settings on a black instruction panel.
+        // The open lid: log chart, readings, sources and settings on a black instruction panel.
         val lid = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(26), dp(24), dp(26), dp(26))
@@ -110,19 +119,24 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
         }
         root.addView(lid)
-        lid.addView(section("Readings", first = true))
+        lid.addView(section("PropWatch · DX Log", first = true, pill = true))
+        logChart = LogChartView(this)
+        lid.addView(logChart)
 
-        results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(10), 0, dp(4)) }
+        lid.addView(section("Readings"))
+        results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(2), 0, dp(4)) }
         lid.addView(results)
 
         lid.addView(section("Sources"))
-        lid.addView(link("Hepburn tropo forecast", "https://www.dxinfocentre.com/tropo.html"))
-        lid.addView(link("Live 144 MHz map (DXView)", "https://vhf.dxview.org/"))
-        lid.addView(link("NOAA SWPC 3-day forecast", "https://services.swpc.noaa.gov/text/3-day-forecast.txt"))
-        lid.addView(link("DXMaps (Es / tropo)", "https://www.dxmaps.com/spots/map.php?Lan=E&Frec=144"))
-        lid.addView(link("DXMaps 6m", "https://www.dxmaps.com/spots/map.php?Lan=E&Frec=50"))
-        lid.addView(link("HF band conditions (N0NBH)", "https://www.hamqsl.com/solar.html"))
-        lid.addView(link("PSKReporter map (all bands)", "https://pskreporter.info/pskmap.html"))
+        lid.addView(sourcesTable(listOf(
+            Triple("Hepburn tropo forecast", "2M · 70", "https://www.dxinfocentre.com/tropo.html"),
+            Triple("Live 144 MHz map (DXView)", "2M", "https://vhf.dxview.org/"),
+            Triple("NOAA SWPC 3-day forecast", "ALL", "https://services.swpc.noaa.gov/text/3-day-forecast.txt"),
+            Triple("DXMaps · Es and tropo", "2M", "https://www.dxmaps.com/spots/map.php?Lan=E&Frec=144"),
+            Triple("DXMaps · 6 metres", "6M", "https://www.dxmaps.com/spots/map.php?Lan=E&Frec=50"),
+            Triple("HF band conditions (N0NBH)", "HF", "https://www.hamqsl.com/solar.html"),
+            Triple("PSKReporter map", "ALL", "https://pskreporter.info/pskmap.html"),
+        )))
 
         lid.addView(section("Settings"))
         val st = Store.station(this)
@@ -139,20 +153,15 @@ class MainActivity : Activity() {
             startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
         }.apply { visibility = View.GONE }
         lid.addView(locOnBtn)
-        lid.addView(radioSwitch("Use phone location (GPS)", Store.useGps(this)) { on ->
-            Store.saveUseGps(this, on)   // applies immediately
-            applyGpsMode()
-            if (on) { if (Locator.hasPermission(this)) refreshStationQuietly() else requestPermissions(LOCATION_PERMS, REQ_REFRESH) }
-        })
         lid.addView(radioButton("Check my location") { checkMyLocation() })
         lid.addView(label("Latitude")); lid.addView(lat)
         lid.addView(label("Longitude")); lid.addView(lon)
         lid.addView(label("Check every (hours, 1–12)")); lid.addView(interval)
-        val enabled = radioSwitch("Background monitoring", Store.enabled(this)) { }
-        val sounds = radioSwitch("Radio switch sounds", Store.sounds(this)) { on ->
-            Store.saveSounds(this, on)   // applies immediately, no need to Save
-        }
-        lid.addView(enabled); lid.addView(sounds)
+        lid.addView(TextView(this).apply {
+            textSize = 11f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.7f; setPadding(0, dp(10), 0, dp(2))
+            text = "Front-panel rockers: SOUND switch sounds · MONITOR background checks · GPS phone location. " +
+                "They take effect at once."
+        })
         lid.addView(radioButton("Save settings") {
             val la = lat.text.toString().toDoubleOrNull()
             val lo = lon.text.toString().toDoubleOrNull()
@@ -167,7 +176,6 @@ class MainActivity : Activity() {
                     showStation()
                 }
                 Store.saveInterval(this, h)
-                Store.saveEnabled(this, enabled.isChecked)
                 PropWorker.schedule(this)
                 Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
             }
@@ -183,6 +191,8 @@ class MainActivity : Activity() {
             setPadding(0, dp(4), 0, 0)
             text = "PROPWATCH ${Updater.currentName(this@MainActivity)} · BUILD ${Updater.currentBuild(this@MainActivity)}"
         })
+        lid.addView(section("Support PropWatch"))
+        lid.addView(donatePanel())
         lid.addView(TextView(this).apply {
             textSize = 12f; setTextColor(Radio.CREAM); alpha = 0.55f; setPadding(0, dp(16), 0, 0)
             text = "Alerts only fire when a threshold is met: tropo ducting forecast along the North Sea paths " +
@@ -224,43 +234,153 @@ class MainActivity : Activity() {
         setOnClickListener { Sfx.click(this@MainActivity); onClick() }
     }
 
-    private fun link(t: String, url: String) = Button(this).apply {
-        text = "▸  $t"
-        isAllCaps = false
-        typeface = Radio.SERIF
-        textSize = 14f
-        setTextColor(Radio.CREAM)
-        background = Radio.buttonBg(this@MainActivity, big = false)
-        stateListAnimator = null
-        gravity = Gravity.START or Gravity.CENTER_VERTICAL
-        setPadding(dp(14), 0, dp(14), 0)
-        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(4)) }
-        setOnClickListener {
-            Sfx.detent(this@MainActivity)
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    /**
+     * Ruled cream-on-black table, like the station list printed in the lid.
+     * Rows: name, bands, URL. Tapping a row opens it.
+     */
+    private fun sourcesTable(rows: List<Triple<String, String, String>>): View {
+        val rule = Color.argb(0xB0, 0xF0, 0xE4, 0xC4)
+        fun line() = View(this).apply {
+            setBackgroundColor(rule)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
+        }
+        fun row(a: String, b: String, header: Boolean) = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(10), dp(if (header) 4 else 11), dp(10), dp(if (header) 4 else 11))
+            if (header) setBackgroundColor(Radio.CREAM)
+            addView(TextView(context).apply {
+                text = a; textSize = if (header) 10f else 14f
+                typeface = if (header) Radio.SERIF else Typeface.SERIF
+                letterSpacing = if (header) 0.3f else 0f
+                setTextColor(if (header) Radio.INK else Radio.CREAM)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(TextView(context).apply {
+                text = b; textSize = 10f; typeface = Radio.SERIF; letterSpacing = 0.15f; gravity = Gravity.END
+                setTextColor(if (header) Radio.INK else Radio.GOLD)
+                layoutParams = LinearLayout.LayoutParams(dp(64), LinearLayout.LayoutParams.WRAP_CONTENT)
+            })
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(dp(1), rule) }
+            addView(row("SOURCE", "BANDS", header = true))
+            for ((name, bands, url) in rows) {
+                addView(line())
+                addView(row("▸  $name", bands, header = false).apply {
+                    background = android.graphics.drawable.StateListDrawable().apply {
+                        addState(intArrayOf(android.R.attr.state_pressed), android.graphics.drawable.ColorDrawable(Color.argb(0x40, 0xF0, 0xE4, 0xC4)))
+                    }
+                    isClickable = true
+                    setOnClickListener {
+                        Sfx.detent(this@MainActivity)
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    }
+                })
+            }
         }
     }
 
-    private fun radioSwitch(t: String, checked: Boolean, onChange: (Boolean) -> Unit) = Switch(this).apply {
-        text = t
-        typeface = Radio.SERIF
-        setTextColor(Radio.CREAM)
-        isChecked = checked
-        val (thumb, track) = Radio.switchTints()
-        thumbTintList = thumb; trackTintList = track
-        setPadding(0, dp(10), 0, dp(10))
-        setOnCheckedChangeListener { _, on -> onChange(on); Sfx.click(this@MainActivity) }
+    /**
+     * The coffee fund: a cheeky one-pound ask, then a slider for £1–£10 and a
+     * PayPal button. Entirely optional; nothing in the app is locked behind it.
+     */
+    private fun donatePanel(): View {
+        var pounds = Donate.MIN
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(TextView(this).apply {
+            textSize = 14f; typeface = Typeface.SERIF; setTextColor(Radio.CREAM); setPadding(0, dp(2), 0, dp(4))
+            text = "PropWatch is free and always will be. It runs on valves, solder and strong coffee, though. " +
+                "If it's caught you an opening, would you stand the operator a £1 cuppa?"
+        })
+        val chooser = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = GradientDrawable().apply { setColor(Color.rgb(0x0A, 0x09, 0x08)); setStroke(dp(1), Radio.GOLD) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+        }
+        val amount = TextView(this).apply {
+            textSize = 34f; typeface = Radio.SERIF; setTextColor(Radio.GOLD); gravity = Gravity.CENTER
+        }
+        val cups = TextView(this).apply {
+            textSize = 10f; typeface = Radio.SERIF; letterSpacing = 0.3f; setTextColor(Radio.CREAM); gravity = Gravity.CENTER
+        }
+        val quip = TextView(this).apply {
+            textSize = 13f; typeface = Radio.SERIF_ITALIC; setTextColor(Radio.CREAM); alpha = 0.85f
+            gravity = Gravity.CENTER; setPadding(0, dp(6), 0, dp(4)); minLines = 2
+        }
+        lateinit var pay: Button
+        fun show() {
+            amount.text = "£$pounds"
+            cups.text = Donate.cups(pounds)
+            quip.text = Donate.quip(pounds)
+            pay.text = "Donate £$pounds with PayPal"
+        }
+        val slider = SeekBar(this).apply {
+            max = Donate.MAX - Donate.MIN
+            progress = 0
+            progressTintList = ColorStateList.valueOf(Radio.GOLD)
+            thumbTintList = ColorStateList.valueOf(Radio.CREAM)
+            progressBackgroundTintList = ColorStateList.valueOf(Radio.CHROME_DARK)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                    if (Donate.MIN + p != pounds) { pounds = Donate.MIN + p; show(); if (fromUser) Sfx.detent(this@MainActivity) }
+                }
+                override fun onStartTrackingTouch(sb: SeekBar) {}
+                override fun onStopTrackingTouch(sb: SeekBar) {}
+            })
+        }
+        val ends = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(8), 0, dp(8), 0)
+            addView(TextView(context).apply {
+                text = "£${Donate.MIN}"; textSize = 10f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(TextView(context).apply {
+                text = "£${Donate.MAX}"; textSize = 10f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
+            })
+        }
+        pay = radioButton("") {
+            startActivity(Intent(Intent.ACTION_VIEW, Donate.url(pounds)))
+        }
+        chooser.addView(amount); chooser.addView(cups); chooser.addView(quip)
+        chooser.addView(slider); chooser.addView(ends); chooser.addView(pay)
+        chooser.addView(TextView(this).apply {
+            textSize = 10.5f; setTextColor(Radio.CREAM); alpha = 0.6f; gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
+            text = "Opens PayPal in your browser. Pay by card or PayPal account; nothing is charged in the app."
+        })
+        show()
+
+        val ask = radioButton("Buy me a coffee — £1") {}
+        ask.setOnClickListener {
+            Sfx.click(this)
+            val open = chooser.visibility != View.VISIBLE
+            chooser.visibility = if (open) View.VISIBLE else View.GONE
+            ask.text = if (open) "Maybe later" else "Buy me a coffee — £1"
+        }
+        box.addView(ask)
+        box.addView(chooser)
+        return box
     }
 
-    /** Section heading: a cream nameplate ribbon with widely spaced black capitals, as on the lid. */
-    private fun section(t: String, first: Boolean = false) = TextView(this).apply {
-        text = t.uppercase(); textSize = 12f; typeface = Radio.SERIF; letterSpacing = 0.45f
+    /**
+     * Section heading. Normal: a cream band with widely spaced black capitals, like the
+     * lid's "operating instructions" headers. pill: the rounded nameplate across the top.
+     */
+    private fun section(t: String, first: Boolean = false, pill: Boolean = false) = TextView(this).apply {
+        text = t.uppercase(); textSize = if (pill) 11f else 10.5f; typeface = Radio.SERIF
+        letterSpacing = if (pill) 0.45f else 0.3f
         setTextColor(Radio.INK); gravity = Gravity.CENTER
-        setPadding(dp(8), dp(4), dp(8), dp(4))
-        background = GradientDrawable().apply { setColor(Radio.CREAM); cornerRadius = dp(2).toFloat() }
+        setPadding(dp(8), dp(if (pill) 5 else 3), dp(8), dp(if (pill) 5 else 3))
+        background = GradientDrawable().apply {
+            setColor(Radio.CREAM); cornerRadius = dp(if (pill) 14 else 1).toFloat()
+        }
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, if (first) 0 else dp(22), 0, dp(8)) }
+            LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, if (first) 0 else dp(20), 0, dp(8)) }
     }
 
     private fun label(t: String) = TextView(this).apply {
@@ -280,31 +400,44 @@ class MainActivity : Activity() {
 
     // ---- Behaviour ----
 
-    private fun level(r: Report?): Int {
-        val f = shown(r)
-        return when {
-            f.any { it.alert && !it.lowGrade } -> 2
-            f.any { it.alert } -> 1
-            else -> 0
-        }
-    }
-
-    /** Which bands each reading is about, for the waveband buttons. */
-    private fun bandsOf(mode: String): Set<String> = when (mode) {
-        "HF bands" -> setOf("hf")
-        "Live 6m spots" -> setOf("6m")
-        "Live 2m spots" -> setOf("2m")
-        "Live 70cm spots" -> setOf("70cm")
-        "Tropo forecast" -> setOf("2m", "70cm")
-        "Meteor scatter" -> setOf("6m", "2m")
-        "Aurora" -> setOf("6m", "2m", "70cm")
-        else -> setOf("hf", "6m", "2m", "70cm")
-    }
+    /** Needle position for the selected waveband: 0 quiet, 1 heads-up, 2 open. */
+    private fun level(r: Report?): Int = Bands.level(r?.findings.orEmpty(), Store.band(this)).coerceAtLeast(0)
 
     /** The readings for the selected waveband button. */
     private fun shown(r: Report?): List<Finding> {
         val band = Store.band(this)
-        return r?.findings.orEmpty().filter { band == "all" || band in bandsOf(it.mode) }
+        return r?.findings.orEmpty().filter { band == "all" || band in Bands.of(it.mode) }
+    }
+
+    private fun bandName(key: String) = if (key == "all") "ALL BANDS" else Bands.ALL.first { it.first == key }.third
+
+    /** Waveband plate rows: each band's live condition beside its button. */
+    private fun bandRows(r: Report?) = BAND_KEYS.map { key ->
+        val lv = if (r == null) null else Bands.level(r.findings, key)
+        BandPlateView.Row(bandName(key), when (lv) {
+            null -> "—"; 2 -> "OPEN"; 1 -> "HEADS-UP"; -1 -> "NO DATA"; else -> "QUIET"
+        }, when (lv) { 2 -> Radio.LAMP_ALERT; 1 -> Radio.LAMP_HEADSUP; -1 -> Radio.LAMP_ERROR; else -> null })
+    }
+
+    private fun toneSwitches() = listOf(
+        "SOUND" to Store.sounds(this), "MONITOR" to Store.enabled(this), "GPS" to Store.useGps(this))
+
+    /** A tone-plate rocker was flipped. */
+    private fun toggle(i: Int, on: Boolean) {
+        when (i) {
+            0 -> Store.saveSounds(this, on)
+            1 -> {
+                Store.saveEnabled(this, on)
+                PropWorker.schedule(this)
+                Toast.makeText(this, if (on) "Background monitoring on" else "Background monitoring off", Toast.LENGTH_SHORT).show()
+            }
+            2 -> {
+                Store.saveUseGps(this, on)
+                applyGpsMode()
+                if (on) { if (Locator.hasPermission(this)) refreshStationQuietly() else requestPermissions(LOCATION_PERMS, REQ_REFRESH) }
+            }
+        }
+        Sfx.click(this)
     }
 
     private fun checkNow() {
@@ -327,10 +460,8 @@ class MainActivity : Activity() {
     // ---- Location ----
 
     companion object {
-        /** Waveband buttons: key, button label, readout name. */
-        private val BANDS = listOf(
-            Triple("all", "ALL", "ALL BANDS"), Triple("hf", "HF", "HF"), Triple("6m", "6 M", "6 METRES"),
-            Triple("2m", "2 M", "2 METRES"), Triple("70cm", "70 CM", "70 CM"))
+        /** Waveband buttons, top to bottom: "all" then each band. */
+        private val BAND_KEYS = listOf("all") + Bands.ALL.map { it.first }
         private const val REQ_STARTUP = 1
         private const val REQ_LOCATE = 2
         private const val REQ_REFRESH = 3
@@ -507,6 +638,8 @@ class MainActivity : Activity() {
 
     private fun render(r: Report?, animateNeedle: Boolean) {
         results.removeAllViews()
+        bandPlate.rows = bandRows(r)
+        logChart.entries = Store.history(this)
         if (animateNeedle) dial.setLevel(level(r))
         if (r == null) {
             status.text = "NO READINGS YET — PRESS CHECK NOW"
@@ -514,12 +647,13 @@ class MainActivity : Activity() {
         }
         val list = shown(r)
         val alerts = list.count { it.alert && !it.lowGrade }
-        val band = BANDS.firstOrNull { it.first == Store.band(this) }?.third ?: "ALL BANDS"
+        val band = bandName(Store.band(this))
         status.text = "LAST CHECK ${Checker.ukTime(r.timeMs)} UK\n$band · " +
             if (alerts > 0) "$alerts ALERT${if (alerts > 1) "S" else ""}" else "CONDITIONS NORMAL"
         for (f in list) results.addView(card(f))
     }
 
+    /** A reading, boxed like a paragraph of the lid's operating instructions. */
     private fun card(f: Finding): View {
         val lamp = when {
             f.alert && !f.lowGrade -> Radio.LAMP_ALERT
@@ -528,39 +662,42 @@ class MainActivity : Activity() {
             else -> Radio.LAMP_OFF
         }
         val lit = lamp != Radio.LAMP_OFF
+        val rule = if (lit) lamp else Color.argb(0xB0, 0xF0, 0xE4, 0xC4)
         return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = Radio.cardBg(this@MainActivity, if (lit) lamp else Color.argb(0x80, 0xF0, 0xE4, 0xC4))
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply { setColor(Color.rgb(0x0A, 0x09, 0x08)); setStroke(dp(1), rule) }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(5), 0, dp(5)) }
-
-            // Pilot lamp
-            addView(View(context).apply {
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    gradientType = GradientDrawable.RADIAL_GRADIENT
-                    gradientRadius = dp(9).toFloat()
-                    colors = intArrayOf(if (lit) Color.WHITE else lamp, lamp, Color.argb(0, 0, 0, 0))
-                    setStroke(dp(1), Radio.CHROME_DARK)
-                }
-                alpha = if (lit) 1f else 0.6f
-                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply {
-                    setMargins(0, dp(3), dp(12), 0)
-                }
+            // Header band with the mode name.
+            addView(TextView(context).apply {
+                text = f.mode.uppercase(); textSize = 9.5f; typeface = Radio.SERIF; letterSpacing = 0.3f
+                gravity = Gravity.CENTER; setTextColor(Radio.INK); setPadding(0, dp(2), 0, dp(2))
+                setBackgroundColor(if (lit) lamp else Radio.CREAM)
             })
             addView(LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                addView(TextView(context).apply {
-                    text = f.mode.uppercase(); textSize = 11f; typeface = Radio.SERIF; letterSpacing = 0.2f
-                    setTextColor(if (lit) lamp else Radio.GOLD)
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                // Pilot lamp
+                addView(View(context).apply {
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        gradientType = GradientDrawable.RADIAL_GRADIENT
+                        gradientRadius = dp(9).toFloat()
+                        colors = intArrayOf(if (lit) Color.WHITE else lamp, lamp, Color.argb(0, 0, 0, 0))
+                        setStroke(dp(1), Radio.CHROME_DARK)
+                    }
+                    alpha = if (lit) 1f else 0.6f
+                    layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply { setMargins(0, dp(3), dp(12), 0) }
                 })
-                addView(TextView(context).apply {
-                    text = f.headline; textSize = 15f; setTextColor(Radio.CREAM); setPadding(0, dp(2), 0, dp(2))
-                })
-                if (f.detail.isNotBlank()) addView(TextView(context).apply {
-                    text = f.detail; textSize = 13f; setTextColor(Radio.CREAM); alpha = 0.75f
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    addView(TextView(context).apply {
+                        text = f.headline; textSize = 15f; setTextColor(Radio.CREAM); setPadding(0, 0, 0, dp(3))
+                    })
+                    if (f.detail.isNotBlank()) addView(TextView(context).apply {
+                        text = f.detail; textSize = 13f; setTextColor(Radio.CREAM); alpha = 0.75f
+                    })
                 })
             })
         }

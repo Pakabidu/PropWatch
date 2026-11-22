@@ -1,7 +1,6 @@
 package uk.dx.propwatch
 
 import android.content.Context
-import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -32,6 +31,9 @@ object Radio {
     val CHROME = Color.rgb(0xC8, 0xC8, 0xC2)
     val CHROME_DARK = Color.rgb(0x6E, 0x6E, 0x68)
     val CREAM = Color.rgb(0xF0, 0xE4, 0xC4)
+    val PAPER = Color.rgb(0xE8, 0xDC, 0xB8)        // log-chart graph paper
+    val COPPER = Color.rgb(0xB0, 0x7A, 0x4A)       // aged handle brackets and latches
+    val COPPER_DARK = Color.rgb(0x5E, 0x3A, 0x20)
     val INK = Color.rgb(0x1A, 0x16, 0x12)
 
     // Pilot-lamp colours. Green is the "magic eye" tuning-indicator glow.
@@ -67,7 +69,7 @@ object Radio {
             py[gy][gx] = (gy + 0.15f + r.nextFloat() * 0.7f) * step
             sh[gy][gx] = r.nextInt(-6, 7).toFloat()
         }
-        val crackCol = Color.rgb(0x4A, 0x3A, 0x28)
+        val crackCol = Color.rgb(0x7A, 0x52, 0x2E)   // worn-through brown in the crackle
         val bmp = Bitmap.createBitmap(n, n, Bitmap.Config.ARGB_8888)
         for (y in 0 until n) for (x in 0 until n) {
             val cx = (x / step).toInt(); val cy = (y / step).toInt()
@@ -85,7 +87,26 @@ object Radio {
             val dome = (sqrt(d1) / step).coerceIn(0f, 1f)   // slightly domed scales: lighter centres
             val v = (0x17 + shade - dome * 6 + r.nextInt(-3, 4)).toInt()
             val base = Color.rgb(v.coerceIn(0, 255), (v - 3).coerceIn(0, 255), (v - 5).coerceIn(0, 255))
-            bmp.setPixel(x, y, mix(base, crackCol, crack * 0.75f))
+            bmp.setPixel(x, y, mix(base, crackCol, crack * 0.9f))
+        }
+        bmp
+    }
+
+    /** Translucent light and dark blotches, tiled over the chrome plates to look etched and aged. */
+    val mottle: Bitmap by lazy {
+        val n = 128
+        val bmp = Bitmap.createBitmap(n, n, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        val r = Random(5)
+        repeat(260) {
+            val light = r.nextBoolean()
+            p.color = if (light) Color.argb(r.nextInt(14, 34), 0xFF, 0xFF, 0xFA) else Color.argb(r.nextInt(14, 30), 0x5A, 0x58, 0x50)
+            val x = r.nextFloat() * n; val y = r.nextFloat() * n; val rad = 1.5f + r.nextFloat() * 4.5f
+            // Draw wrapped copies so the tile repeats without seams.
+            for (ox in listOf(-n, 0, n)) for (oy in listOf(-n, 0, n)) {
+                c.drawOval(x + ox - rad, y + oy - rad * 0.7f, x + ox + rad, y + oy + rad * 0.7f, p)
+            }
         }
         bmp
     }
@@ -111,26 +132,6 @@ object Radio {
                 g(Color.rgb(0x34, 0x31, 0x2E), Color.rgb(0x0C, 0x0B, 0x0A), if (big) CHROME else CHROME_DARK))
         }
     }
-
-    /** Front-panel recess: near-black with a thin chrome edge. */
-    fun panelBg(ctx: Context, rim: Int = CHROME_DARK, radius: Float = 8f) = GradientDrawable().apply {
-        setColor(PANEL)
-        cornerRadius = dp(ctx, radius)
-        setStroke(dp(ctx, 1.5f).toInt(), rim)
-    }
-
-    /** Reading card in the lid: black with a cream rule, tinted by the pilot lamp when lit. */
-    fun cardBg(ctx: Context, rim: Int) = GradientDrawable().apply {
-        setColor(Color.rgb(0x0A, 0x09, 0x08))
-        cornerRadius = dp(ctx, 2f)
-        setStroke(dp(ctx, 1f).toInt(), rim)
-    }
-
-    fun switchTints() = Pair(
-        ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(CHROME, LAMP_OFF)),
-        ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-            intArrayOf(Color.argb(0x88, 0xD9, 0xB5, 0x6A), Color.argb(0x66, 0x5E, 0x58, 0x4E))),
-    )
 
     /**
      * The open lid: a black instruction panel with a double cream rule, set in a
