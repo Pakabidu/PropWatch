@@ -254,6 +254,73 @@ class MainActivity : Activity() {
         root.addView(front)
     }
 
+    // ---- Tropo band settings ----
+
+    /**
+     * Rebuilds the Tropo bands section: the station's ITU region, a toggle for each core
+     * band, the microwave group (collapsed until opened) and a reset to the regional
+     * defaults. Only choices that differ from the default are stored.
+     */
+    private fun refreshTropoBands() {
+        tropoBox.removeAllViews()
+        val grid = Store.stationGrid(this)
+        val region = TropoBands.ituRegionForGrid(grid)
+        val defaults = TropoBands.getDefaultBandsForGrid(grid).map { it.id }.toSet()
+        val overrides = Store.tropoBandOverrides(this)
+        val visible = TropoBands.resolveVisibleBands(grid, overrides).map { it.id }.toSet()
+        tropoBox.addView(TextView(this).apply {
+            textSize = 14f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.9f; setPadding(0, dp(2), 0, dp(6))
+            text = "ITU REGION ${region?.number ?: "?"} · LOCATOR ${grid.uppercase()}\n" +
+                "Live checks cover the bands switched on here. Defaults follow your region."
+        })
+        for (b in TropoBands.CORE) tropoBox.addView(bandToggle(b, region, b.id in visible, b.id in defaults))
+        val shownMw = TropoBands.MICROWAVE.count { it.id in visible }
+        tropoBox.addView(radioButton((if (microwaveOpen) "▾ " else "▸ ") + "Microwave bands" +
+                if (shownMw > 0) " ($shownMw shown)" else "") {
+            microwaveOpen = !microwaveOpen
+            refreshTropoBands()
+        })
+        if (microwaveOpen) for (b in TropoBands.MICROWAVE) tropoBox.addView(bandToggle(b, region, b.id in visible, b.id in defaults))
+        if (overrides.isNotEmpty()) tropoBox.addView(radioButton("Reset to Region ${region?.number ?: ""} defaults") {
+            Store.clearTropoBandOverrides(this)
+            refreshTropoBands()
+        })
+    }
+
+    /** One band: lamp, label and frequency, with its allocation underneath. Tapping flips it. */
+    private fun bandToggle(b: TropoBand, region: ItuRegion?, on: Boolean, isDefault: Boolean): View {
+        val freq = if (b.frequencyMHz >= 1000) "%.1f GHz".format(java.util.Locale.US, b.frequencyMHz / 1000)
+            else "%.0f MHz".format(java.util.Locale.US, b.frequencyMHz)
+        val note = when {
+            region != null && region !in b.ituRegions -> "Not allocated in Region ${region.number}. " + b.allocationNote
+            b.nationalOnly -> "National allocations only. " + b.allocationNote
+            else -> b.allocationNote
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = Radio.buttonBg(this@MainActivity, big = false)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(4)) }
+            addView(TextView(context).apply {
+                text = (if (on) "●  " else "○  ") + "${b.label}  ·  $freq" + if (on == isDefault) "" else "   (changed)"
+                textSize = 17f; typeface = Radio.SERIF
+                setTextColor(if (on) Radio.LAMP_ALERT else Radio.CREAM)
+            })
+            addView(TextView(context).apply {
+                text = note; textSize = 13f; setTextColor(Radio.CREAM); alpha = 0.75f; setPadding(0, dp(2), 0, 0)
+            })
+            isClickable = true
+            setOnClickListener {
+                Sfx.click(this@MainActivity)
+                val now = !on
+                // Store only a real change from the default; flipping back forgets the choice.
+                Store.setTropoBandOverride(this@MainActivity, b.id, if (now == isDefault) null else now)
+                refreshTropoBands()
+            }
+        }
+    }
+
     // ---- Styled widgets ----
 
     /** Bakelite push-button. [silent] skips the switch click, for buttons with their own sound. */
