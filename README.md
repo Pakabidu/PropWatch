@@ -2,6 +2,10 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v5.7
+
+- The **station log** (map, location details and Check my location) now sits at the top of the lid, above the DX log, instead of down in Settings. The coordinate boxes stay in Settings.
+
 ## What's new in v5.6
 
 - **Third cabinet: WW2 aircraft wireless** (Settings → Cabinet), modelled on the RAF bomber receiver and transmitter pair (original artwork; type and serial markings are PropWatch's own):
