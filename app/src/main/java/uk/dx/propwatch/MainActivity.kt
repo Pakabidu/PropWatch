@@ -81,7 +81,19 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
         }
         root.addView(lid)
-        lid.addView(section("PropWatch · DX Log", first = true, pill = true))
+        // Station log first: the map with the station pinned, and Check my location.
+        screen = StationLogView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(6)) }
+        }
+        lid.addView(screen)
+        locOnBtn = radioButton("Turn on location") {
+            startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+        }.apply { visibility = View.GONE }
+        lid.addView(locOnBtn)
+        lid.addView(radioButton("Check my location", silent = true) { checkMyLocation() })
+
+        lid.addView(section("PropWatch · DX Log", pill = true))
         logChart = LogChartView(this)
         lid.addView(logChart)
 
@@ -115,17 +127,6 @@ class MainActivity : Activity() {
         val lat = number("Latitude", "%.4f".format(java.util.Locale.US, st.lat)).also { latField = it }
         val lon = number("Longitude", "%.4f".format(java.util.Locale.US, st.lon)).also { lonField = it }
         val interval = number("Check every (hours, 1–12)", Store.intervalHours(this).toString(), decimal = false)
-        // The station's location, on a backlit radio screen that lives in Settings.
-        screen = StationLogView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(8), 0, dp(6)) }
-        }
-        lid.addView(screen)
-        locOnBtn = radioButton("Turn on location") {
-            startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
-        }.apply { visibility = View.GONE }
-        lid.addView(locOnBtn)
-        lid.addView(radioButton("Check my location", silent = true) { checkMyLocation() })
         lid.addView(label("Latitude")); lid.addView(lat)
         lid.addView(label("Longitude")); lid.addView(lon)
         lid.addView(label("Check every (hours, 1–12)")); lid.addView(interval)
