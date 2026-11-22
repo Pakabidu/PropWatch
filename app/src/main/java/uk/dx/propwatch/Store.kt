@@ -28,6 +28,9 @@ object Store {
     fun enabled(ctx: Context) = p(ctx).getBoolean("enabled", true)
     fun saveEnabled(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("enabled", on).apply()
 
+    fun sounds(ctx: Context) = p(ctx).getBoolean("sounds", true)
+    fun saveSounds(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("sounds", on).apply()
+
     fun saveReport(ctx: Context, r: Report) {
         val arr = JSONArray()
         for (f in r.findings) {
