@@ -13,7 +13,7 @@ android {
         targetSdk = 34
         // CI passes -PbuildNumber=<run number>; the in-app update check compares against it.
         versionCode = (findProperty("buildNumber") as String?)?.toIntOrNull() ?: 3
-        versionName = "3.1"
+        versionName = "4.0"
     }
 
     // A fixed debug key, so each CI build installs over the last one (Android rejects
