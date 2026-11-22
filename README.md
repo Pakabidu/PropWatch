@@ -2,6 +2,10 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v5.5
+
+- The automatic check when the app opens now plays the same valve warm-up sound as Check now, as the dial lamps warm up.
+
 ## What's new in v5.4
 
 - **Checks on every start.** Opening the app runs a fresh propagation check straight away, quietly.

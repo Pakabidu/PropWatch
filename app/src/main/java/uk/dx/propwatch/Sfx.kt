@@ -6,7 +6,7 @@ import android.media.SoundPool
 
 /**
  * WW2-era radio sounds: a bakelite toggle snap for main buttons, a lighter rotary
- * detent for link buttons, and a valve-set warm-up when Check now is pressed. All sounds are
+ * detent for link buttons, and a valve-set warm-up whenever a check starts (Check now, or the app opening). All sounds are
  * original, synthesised for PropWatch. Respects the "Sounds" setting.
  */
 object Sfx {
@@ -51,7 +51,7 @@ object Sfx {
     fun click(ctx: Context) = play(ctx, click, 1f)
     fun detent(ctx: Context) = play(ctx, detent, 0.8f)
 
-    /** The valve warm-up, played for Check now. Plays once the sample has loaded (it may still be loading just after launch). */
+    /** The valve warm-up, played whenever a check starts. Plays once the sample has loaded (it may still be loading just after launch). */
     fun tuneIn(ctx: Context) {
         if (!Store.sounds(ctx)) return
         if (startup in loaded) pool?.play(startup, 0.8f, 0.8f, 1, 0, 1f) else pendingStartup = true
