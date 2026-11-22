@@ -20,16 +20,23 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk PropWatch.apk
+        run: gradle :app:assembleDebug --no-daemon -PbuildNumber=${{ github.run_number }}
+      - name: Rename APK and write version file
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk PropWatch.apk
+          echo "${{ github.run_number }}" > version.txt
       - uses: actions/upload-artifact@v4
         with:
           name: PropWatch-apk
           path: PropWatch.apk
+      # Only builds from main are published, so the in-app update check never offers a work-in-progress branch.
       - uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
         with:
           tag_name: latest
           name: PropWatch (latest build)
           make_latest: true
-          files: PropWatch.apk
+          body: "Build ${{ github.run_number }} from ${{ github.sha }}"
+          files: |
+            PropWatch.apk
+            version.txt

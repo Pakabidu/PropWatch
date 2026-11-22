@@ -52,9 +52,17 @@ class Checker(private val home: Station) {
         const val ES_MAX_KM = 2500.0
         const val ES_PAIRS = 2
 
+        // 6m: single-hop Es is 700-2500 km; multi-hop Es / F2 / TEP beyond 3500 km is the real prize.
+        const val SIXM_ES_MIN_KM = 700.0
+        const val SIXM_ES_MAX_KM = 2500.0
+        const val SIXM_ES_PAIRS = 3
+        const val SIXM_DX_KM = 3500.0
+        const val SIXM_DX_PAIRS = 2
+
         const val KP_OBS = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
         const val KP_FC = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json"
         const val SWPC_ALERTS = "https://services.swpc.noaa.gov/products/alerts.json"
+        const val HAMQSL = "https://www.hamqsl.com/solarxml.php"
 
         /** Points along the North Sea paths from the Wash. */
         val PATH = listOf(
@@ -77,6 +85,8 @@ class Checker(private val home: Station) {
         val findings = listOf(
             safe("Aurora") { aurora(now) },
             safe("Tropo forecast") { tropoForecast(now) },
+            safe("HF bands") { hfBands(now) },
+            safe("Live 6m spots") { live6m() },
             safe("Live 2m spots") { liveSpots(now, "2m", "144000000-146000000") },
             safe("Live 70cm spots") { liveSpots(now, "70cm", "432000000-433000000") },
             safe("Meteor scatter") { meteors(now) },
@@ -364,6 +374,94 @@ class Checker(private val home: Station) {
             if (spots.isEmpty()) "No $band reports in the last 30 min"
             else "Normal — ${tropoPairs.size} paths ≥700 km${if (bestTxt.isNotEmpty()) ", $bestTxt" else ""}",
             "${spots.size} $band reports checked.")
+    }
+
+    // ---------------------------------------------------------------- HF + 6m/4m status (N0NBH)
+
+    /** N0NBH's solar feed, fetched at most once per run (HF bands and 6m both use it). */
+    private val solar: Map<String, String> by lazy {
+        val p = Xml.newPullParser()
+        p.setInput(StringReader(get(HAMQSL)))
+        val out = mutableMapOf<String, String>()
+        var key: String? = null
+        var ev = p.eventType
+        while (ev != XmlPullParser.END_DOCUMENT) {
+            when (ev) {
+                XmlPullParser.START_TAG -> key = when (p.name) {
+                    "band" -> "band/${p.getAttributeValue(null, "name")}/${p.getAttributeValue(null, "time")}"
+                    "phenomenon" -> "vhf/${p.getAttributeValue(null, "name")}/${p.getAttributeValue(null, "location")}"
+                    else -> p.name
+                }
+                XmlPullParser.TEXT -> key?.let { k -> p.text.trim().takeIf { it.isNotEmpty() }?.let { out[k] = it } }
+                XmlPullParser.END_TAG -> key = null
+            }
+            ev = p.next()
+        }
+        if (out.keys.none { it.startsWith("band/") }) throw IOException("No band data from hamqsl.com")
+        out
+    }
+
+    private val hfGroups = listOf("80m-40m", "30m-20m", "17m-15m", "12m-10m")
+
+    private fun hfBands(now: Long): Finding {
+        val s = solar
+        // Local solar time at the station decides whether the day or night column applies.
+        val utcH = Instant.ofEpochMilli(now).atZone(ZoneOffset.UTC).let { it.hour + it.minute / 60.0 }
+        val solarH = ((utcH + home.lon / 15.0) % 24 + 24) % 24
+        val day = solarH in 6.0..18.0
+        fun row(t: String) = hfGroups.joinToString(" · ") { "${it.replace("m-", "–")} ${s["band/$it/$t"] ?: "?"}" }
+        val now10 = s["band/12m-10m/${if (day) "day" else "night"}"]
+        val wx = listOfNotNull(
+            s["solarflux"]?.let { "SFI $it" }, s["sunspots"]?.let { "SSN $it" },
+            s["kindex"]?.let { "K $it" }, s["aindex"]?.let { "A $it" },
+            s["signalnoise"]?.let { "noise $it" }, s["geomagfield"]?.let { "geomag $it" },
+        ).joinToString(", ")
+        val other = if (day) "Night" else "Day"
+        val detail = "$other: ${row(if (day) "night" else "day")}\n$wx.\n" +
+            "160m behaves like 80m at night; 60m like 40m. Source: N0NBH (hamqsl.com)."
+        // 10m/12m rated Good is the notable one; everything else is just information.
+        val tenOpen = now10.equals("Good", ignoreCase = true)
+        return Finding("HF bands", tenOpen,
+            (if (tenOpen) "10m & 12m open — " else "") + "${if (day) "Day" else "Night"}: ${row(if (day) "day" else "night")}",
+            detail, lowGrade = true)
+    }
+
+    // ---------------------------------------------------------------- live 6m
+
+    private fun live6m(): Finding {
+        val spots = fetchSpots("50000000-50500000")
+        val es = spots.filter {
+            it.km in SIXM_ES_MIN_KM..SIXM_ES_MAX_KM && (inNwEurope(it.la, it.loa) || inNwEurope(it.lb, it.lob))
+        }
+        val dx = spots.filter { it.km >= SIXM_DX_KM && (inUkBenelux(it.la, it.loa) || inUkBenelux(it.lb, it.lob)) }
+        val esPairs = es.map(::pairKey).toSet()
+        val dxPairs = dx.map(::pairKey).toSet()
+        val n0nbh = try {
+            listOfNotNull(solar["vhf/E-Skip/europe_6m"]?.let { "6m $it" }, solar["vhf/E-Skip/europe_4m"]?.let { "4m $it" })
+                .joinToString(", ").takeIf { it.isNotEmpty() }?.let { " N0NBH Europe Es: $it." } ?: ""
+        } catch (_: Exception) { "" }
+        fun look(s: Spot): String {
+            val far = if (inUkBenelux(s.la, s.loa)) s.lb to s.lob else s.la to s.loa
+            val b = Geo.bearing(home.lat, home.lon, far.first, far.second)
+            return "${Geo.compass(b)} (%.0f°)".format(b)
+        }
+        fun best(l: List<Spot>) = l.maxByOrNull { it.km }!!.let { "best ${it.a}–${it.b} %.0f km (${it.mode})".format(it.km) }
+        val mode = "Live 6m spots"
+        if (dxPairs.size >= SIXM_DX_PAIRS) {
+            val far = dx.maxByOrNull { it.km }!!
+            return Finding(mode, true, "6m long-haul DX open (multi-hop Es / F2)",
+                "${dxPairs.size} paths ≥3500 km touching UK/Benelux in the last 30 min; ${best(dx)}. " +
+                    "Look ${look(far)}.$n0nbh\nSource: PSKReporter.")
+        }
+        if (esPairs.size >= SIXM_ES_PAIRS) {
+            return Finding(mode, true, "6m sporadic E in progress",
+                "${esPairs.size} paths 700–2500 km in NW Europe in the last 30 min; ${best(es)}. " +
+                    "Look ${look(es.maxByOrNull { it.km }!!)}. Try 50.313 FT8 or 50.150 SSB.$n0nbh\nSource: PSKReporter.")
+        }
+        return Finding(mode, false,
+            if (spots.isEmpty()) "No 6m reports in the last 30 min"
+            else "Normal — ${esPairs.size} Es-range paths${if (es.isNotEmpty()) ", ${best(es)}" else ""}",
+            "${spots.size} 6m reports checked.$n0nbh")
     }
 
     // ---------------------------------------------------------------- meteors
