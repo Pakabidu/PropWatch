@@ -2,6 +2,11 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v5.9
+
+- **Worldwide tropo forecast.** Instead of fixed North Sea paths from eastern England, the forecast now looks at your own station and two rings of points 250 km and 500 km out on the eight compass bearings (17 Open-Meteo points in one request). A bearing counts as a ducting path when the duct is continuous along it: over your station and the 250 km point, or over the 250 km and 500 km points. The alert names the directions and how far the duct reaches, e.g. "NE to 500 km (6 h), E to 250 km (3 h)".
+- **Local time everywhere.** Times are shown in your phone's time zone instead of UK time.
+
 ## What's new in v5.8
 
 - **Tropo band configuration** (`TropoBands.kt`): VHF, UHF and microwave bands for tropospheric ducting (HF is excluded). Core bands 6m, 4m, 2m, 1.25m, 70cm and 23cm; an optional microwave group of 13cm, 9cm, 6cm and 3cm. Each band records its ITU-region allocations and a **duct sensitivity factor** relative to 2m, from the duct cut-off λmax ≈ 0.014·d^1.5: higher bands are trapped by shallower ducts (6m ≈ 0.49, 70cm ≈ 2.1, 23cm ≈ 4.3).
@@ -11,7 +16,7 @@ An Android app that runs the same checks as your scheduled task every few hours 
   - Each band is judged in its terrestrial weak-signal segment (e.g. 432–433 MHz, 1296 MHz, 2320/2304 MHz, 10368 MHz), which keeps out FM, repeaters and the QO-100 satellite on 13cm and 3cm.
   - Thresholds suit each band: 2m still needs a cluster (aircraft scatter reaches 700–800 km); 70cm, 1.25m and 23cm need fewer paths; microwaves count a single 400 km+ path. 6m and 4m also watch for sporadic E, and 6m for multi-hop DX.
   - Paths now count when either end is within 800 km of **your station** (Es: 1500 km), instead of the old fixed UK/Benelux box, so the live checks work anywhere. The 2m Es season is mirrored for the southern hemisphere.
-  - The tropo forecast names the chosen bands a duct favours most, using the duct sensitivity factor. Its model paths are still the North Sea ones from eastern England.
+  - The tropo forecast names the chosen bands a duct favours most, using the duct sensitivity factor.
 - Unit tests for the band table, region lookup (30 places worldwide), the spot rules and overrides run on every build.
 
 ## What's new in v5.7
@@ -107,7 +112,7 @@ A new look inspired by 1940s portable shortwave sets (original artwork; no maker
 | Mode | Source | Alert when |
 |---|---|---|
 | Aurora | NOAA SWPC Kp observed + 3-day forecast, SWPC watches | Kp ≥ 6- now or within 24 h, or a G2+ watch |
-| Tropo (forecast) | Open-Meteo vertical profiles at 5 points from the Wash to Denmark | Refractivity gradient ≤ −157 N/km (ducting) on both sides of the North Sea for ≥ 2 forecast hours |
+| Tropo (forecast) | Open-Meteo vertical profiles at your station and 250/500 km out on 8 bearings | Refractivity gradient ≤ −157 N/km (ducting) continuous along a bearing for ≥ 2 forecast hours |
 | Tropo / Es (live) | PSKReporter spots, last 30 min | 2m: ≥ 5 station pairs ≥ 700 km touching UK/Benelux, or ≥ 2 pairs ≥ 1000 km. 70cm: ≥ 2 pairs ≥ 700 km. Es: ≥ 2 pairs 1000–2500 km in NW Europe, May–Aug or December |
 | HF bands | N0NBH (hamqsl.com) solar data | Shown for reference; heads-up when 12m–10m is rated Good for the current day/night |
 | Live 6m | PSKReporter spots, last 30 min | Es: ≥ 3 station pairs 700–2500 km in NW Europe. DX: ≥ 2 pairs ≥ 3500 km touching UK/Benelux |

@@ -175,10 +175,10 @@ class MainActivity : Activity() {
         lid.addView(donatePanel())
         lid.addView(TextView(this).apply {
             textSize = 15f; setTextColor(Radio.CREAM); alpha = 0.8f; setPadding(0, dp(16), 0, 0)
-            text = "Alerts only fire when a threshold is met: tropo ducting forecast along the North Sea paths " +
-                "or a live cluster of ≥700 km spots, Kp ≥ 6- (or a G2 watch), 2m or 6m Es in progress, 6m " +
-                "long-haul DX, or a major meteor shower peak or 10m/12m opening (heads-ups). HF conditions for " +
-                "80–10m are shown for reference. The tropo forecast is a model estimate, not Hepburn's index."
+            text = "Alerts only fire when a threshold is met: a tropo duct forecast running out from your station, " +
+                "a live opening on one of your tropo bands (spots within 800 km of you), Kp ≥ 6- (or a G2 watch), " +
+                "sporadic E or 6m long-haul DX, or a major meteor shower peak or 10m/12m opening (heads-ups). " +
+                "HF conditions for 80–10m are shown for reference. The tropo forecast is a model estimate, not Hepburn's index."
         })
 
         setContentView(ScrollView(this).apply {
@@ -735,7 +735,7 @@ class MainActivity : Activity() {
     private fun fixNote(l: Location) = buildString {
         if (l.hasAccuracy()) append("±%.0f m · ".format(l.accuracy))
         append((l.provider ?: "fix").uppercase())
-        append(" · ").append(Checker.ukTime(l.time).uppercase())
+        append(" · ").append(Checker.localTime(l.time).uppercase())
     }
 
     /** Puts the saved station on the lit screen (and the aircraft set's record card). */
@@ -882,7 +882,7 @@ class MainActivity : Activity() {
         val list = shown(r)
         val alerts = list.count { it.alert && !it.lowGrade }
         val band = bandName(Store.band(this))
-        status.text = "LAST CHECK ${Checker.ukTime(r.timeMs)} UK\n$band · " +
+        status.text = "LAST CHECK ${Checker.localTime(r.timeMs)}\n$band · " +
             if (alerts > 0) "$alerts ALERT${if (alerts > 1) "S" else ""}" else "CONDITIONS NORMAL"
         for (f in list) results.addView(card(f))
     }
