@@ -43,6 +43,19 @@ interface FrontPanel {
     fun show(level: Int, kp: Float?, animated: Boolean)
     fun warmUp(level: Int, kp: Float?)
     fun setChecking(on: Boolean)
+    /** The mood-light control on this panel, and what to do when it's turned. */
+    var mood: Boolean
+    var onMood: ((Boolean) -> Unit)?
+}
+
+/** A small jewel pilot lamp: warm amber when lit, dull when not. */
+internal fun drawJewel(c: Canvas, p: Paint, x: Float, y: Float, r: Float, lit: Boolean) {
+    p.shader = RadialGradient(x - r * 0.25f, y - r * 0.25f, r * 1.3f,
+        if (lit) intArrayOf(Color.WHITE, Mood.LAMP, Color.rgb(0xB0, 0x50, 0x10))
+        else intArrayOf(Color.rgb(0x70, 0x50, 0x38), Color.rgb(0x40, 0x28, 0x18), Color.rgb(0x20, 0x14, 0x0C)),
+        null, Shader.TileMode.CLAMP)
+    c.drawCircle(x, y, r, p)
+    p.shader = null
 }
 
 /** Separate speaker cabinet that sits on top of the receiver: grey crackle box, chrome louvres. */
@@ -90,7 +103,11 @@ class SpeakerCabinetView(ctx: Context) : CabinetView(ctx) {
  * the waveband (with a pilot lamp beside each band); the toggles switch SOUND, MONITOR
  * and GPS. The other knobs are for show.
  */
-class ReceiverPanelView(ctx: Context) : CabinetView(ctx), FrontPanel {
+class ReceiverPanelView(ctx: Context) : CabinetView(ctx), FrontPanel, MoodGlow {
+    override var mood = false
+        set(v) { field = v; invalidate() }
+    override var onMood: ((Boolean) -> Unit)? = null
+
     override var bands: List<String> = emptyList()
         set(v) { field = v; invalidate() }
     override var bandLamps: List<Int?> = emptyList()
@@ -193,9 +210,15 @@ class ReceiverPanelView(ctx: Context) : CabinetView(ctx), FrontPanel {
         bandSwitch(c)
         vernier(c, spreadX, tuneY, tuneR, false, "BAND SPREAD")
 
-        smallKnob(c, W * 0.11f, row2Y, 11 * d, listOf("1", "2", "3", "4", "5"), "TONE")
+        // The TONE knob's place: here it's the mood light.
+        smallKnob(c, W * 0.11f, row2Y, 11 * d, listOf("OFF", "", "", "", "ON"), "MOOD LIGHT")
+        drawJewel(c, lamp, W * 0.11f, row2Y, 3 * d, mood)
         for ((i, tg) in toggles.withIndex()) toggle(c, toggleX[i], row2Y, tg.second, tg.first)
         smallKnob(c, W * 0.89f, row2Y, 11 * d, listOf("S", "", "M", "", "B"), "SELECTIVITY")
+        // Decades of use: scuffed crackle, paint chipped back to bare metal at the edges, grime.
+        rect.set(0f, 0f, W, H)
+        Wear.panel(c, rect, 51, d, heavy = true)
+        Wear.chips(c, rect, 51, 40, d, Color.argb(160, 0x7A, 0x7A, 0x74))
     }
 
     // ---- parts
@@ -486,6 +509,21 @@ class ReceiverPanelView(ctx: Context) : CabinetView(ctx), FrontPanel {
         animate(switchAngle, to, 350, 0, OvershootInterpolator(1.5f)) { switchAngle = it }
     }
 
+    override fun glows(): List<Glow> {
+        val out = arrayListOf(Glow(RectF(dial), Mood.AMBER, 1f), Glow(RectF(sMeter), Mood.AMBER, 0.8f), Glow(RectF(kpMeter), Mood.AMBER, 0.8f))
+        val ts = 5.8f * t
+        for ((i, col) in bandLamps.withIndex()) if (col != null) {
+            val a = Math.toRadians(switchAngleFor(i) - 90.0)
+            val lx = swX + swR * 2.1f * cos(a).toFloat(); val ly = swY + swR * 2.1f * sin(a).toFloat() - ts * 0.95f
+            out += Glow(RectF(lx - 5 * d, ly - 5 * d, lx + 5 * d, ly + 5 * d), col, 0.7f)
+        }
+        for ((i, tg) in toggles.withIndex()) if (tg.second && i < toggleX.size) {
+            out += Glow(RectF(toggleX[i] + 4 * d, row2Y - 11 * d, toggleX[i] + 14 * d, row2Y - 1 * d), Radio.LAMP_ALERT, 0.6f)
+        }
+        if (mood) out += Glow(RectF(width * 0.11f - 6 * d, row2Y - 6 * d, width * 0.11f + 6 * d, row2Y + 6 * d), Mood.LAMP, 1f)
+        return out
+    }
+
     override fun onDetachedFromWindow() { spinner?.cancel(); super.onDetachedFromWindow() }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
@@ -504,6 +542,7 @@ class ReceiverPanelView(ctx: Context) : CabinetView(ctx), FrontPanel {
                 } else (selected + 1) % bands.size
                 if (i != selected) { selected = i; onSelect?.invoke(i) }
             }
+            hypot(x - width * 0.11f, y - row2Y) < 22 * d -> { mood = !mood; onMood?.invoke(mood) }
             kotlin.math.abs(y - row2Y) < 26 * d -> {
                 val i = toggleX.indices.firstOrNull { kotlin.math.abs(x - toggleX[it]) < width * 0.09f }
                 if (i != null && i < toggles.size) {

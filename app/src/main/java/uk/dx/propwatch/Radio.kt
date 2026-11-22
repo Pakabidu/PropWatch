@@ -200,7 +200,13 @@ object Radio {
         (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t).toInt())
 
     /** Black square push-button with a chrome rim; darkens when pressed. */
-    fun buttonBg(ctx: Context, big: Boolean = true): StateListDrawable {
+    private var buttonSeed = 0
+
+    /** Black push-button with a chrome rim, darkening when pressed, and worn from years of use. */
+    fun buttonBg(ctx: Context, big: Boolean = true): Drawable =
+        WornDrawable(plainButtonBg(ctx, big), 97 + buttonSeed++ * 13, dp(ctx, 1f), button = true)
+
+    private fun plainButtonBg(ctx: Context, big: Boolean): StateListDrawable {
         val radius = dp(ctx, 4f)
         val stroke = dp(ctx, if (big) 2f else 1f).toInt()
         fun g(top: Int, bottom: Int, rim: Int) = GradientDrawable(
@@ -234,6 +240,7 @@ object Radio {
         private val rule = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = CREAM }
         private val screw = Paint(Paint.ANTI_ALIAS_FLAG)
         private val slot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(0x30, 0x30, 0x2C); strokeWidth = 1.2f * d }
+        private val gap = Paint(Paint.ANTI_ALIAS_FLAG).apply { alpha = 200 }
 
         override fun draw(c: Canvas) {
             val b = RectF(bounds)
@@ -244,8 +251,33 @@ object Radio {
             c.drawRect(inner.left + 5 * d, inner.top + 5 * d, inner.right - 5 * d, inner.bottom - 5 * d, rule)
             rule.strokeWidth = 0.6f * d
             c.drawRect(inner.left + 8 * d, inner.top + 8 * d, inner.right - 8 * d, inner.bottom - 8 * d, rule)
+            // A lid that's been opened and closed for decades: scuffs, scratches, a mug ring,
+            // rules worn away in places, grime in the corners.
+            c.save(); c.clipRect(inner)
+            Wear.panel(c, inner, 81, d, heavy = true)
+            Wear.stain(c, inner.right - 70 * d, inner.top + 150 * d, 28 * d, d)
+            gap.color = PANEL
+            val rnd = Random(82)
+            repeat(10) {   // rubbed-off stretches of the cream rule
+                val horiz = rnd.nextBoolean()
+                val f = rnd.nextFloat(); val len = (8 + rnd.nextFloat() * 30) * d
+                if (horiz) {
+                    val y = if (rnd.nextBoolean()) inner.top + 5 * d else inner.bottom - 5 * d
+                    val x = inner.left + f * inner.width()
+                    c.drawRect(x, y - 1.5f * d, x + len, y + 4.5f * d, gap)
+                } else {
+                    val x = if (rnd.nextBoolean()) inner.left + 5 * d else inner.right - 5 * d
+                    val y = inner.top + f * inner.height()
+                    c.drawRect(x - 1.5f * d, y, x + 4.5f * d, y + len, gap)
+                }
+            }
+            c.restore()
+            c.save(); c.clipRect(b)
+            Wear.chips(c, b, 83, 30, d, Color.argb(120, 0x6A, 0x50, 0x38))   // frame leather rubbed through
+            c.restore()
             for ((x, y) in listOf(inner.left to inner.top, inner.right to inner.top,
                 inner.left to inner.bottom, inner.right to inner.bottom)) {
+                Hardware.rustRing(c, x, y, d, 4.2f)
                 screw.shader = android.graphics.RadialGradient(x - 1.5f * d, y - 1.5f * d, 5 * d,
                     CHROME, CHROME_DARK, Shader.TileMode.CLAMP)
                 c.drawCircle(x, y, 4.2f * d, screw)

@@ -32,7 +32,11 @@ import kotlin.math.sin
  * waveband; the blue, red and yellow levers are SOUND, MONITOR and GPS. The red and
  * yellow knurled knobs are for show.
  */
-class AircraftPanelView(ctx: Context) : CabinetView(ctx), FrontPanel {
+class AircraftPanelView(ctx: Context) : CabinetView(ctx), FrontPanel, MoodGlow {
+    override var mood = false
+        set(v) { field = v; invalidate() }
+    override var onMood: ((Boolean) -> Unit)? = null
+
     override var bands: List<String> = emptyList()
         set(v) { field = v; invalidate() }
     override var bandLamps: List<Int?> = emptyList()
@@ -139,12 +143,18 @@ class AircraftPanelView(ctx: Context) : CabinetView(ctx), FrontPanel {
         for ((i, tg) in toggles.withIndex().take(3)) lever(c, leverX[i], leverY, leverR, colours[i], leverAngle[i], tg.first)
 
         // Band switch between two coloured knurled knobs.
-        knurledKnob(c, W * 0.17f, swY, 15 * d, Radio.CODE_RED, Radio.DIAL_CREAM, 0f)
-        text.textSize = 5 * t; c.drawText("AERIAL", W * 0.17f, swY + 15 * d * 1.35f + 7 * t, text)
+        // The red knob is the mood light (the set's AERIAL knob in real life).
+        knurledKnob(c, W * 0.17f, swY, 15 * d, Radio.CODE_RED, Radio.DIAL_CREAM, if (mood) 90f else 0f)
+        drawJewel(c, fill, W * 0.17f, swY, 3.2f * d, mood)
+        text.textSize = 5 * t; c.drawText("MOOD LIGHT", W * 0.17f, swY + 15 * d * 1.35f + 7 * t, text)
         knurledKnob(c, W * 0.83f, swY, 15 * d, Radio.CODE_YELLOW, Radio.DIAL_CREAM, 0f)
         c.drawText("ANODE", W * 0.83f, swY + 15 * d * 1.35f + 7 * t, text)
         bandSwitch(c)
         text.letterSpacing = 0f
+        // Service life in a bomber: scratched enamel, chipped edges, grime, rubbed plates.
+        rect.set(0f, 16 * d, W, H)
+        Wear.panel(c, rect, 61, d, heavy = true)
+        Wear.chips(c, rect, 61, 45, d, Color.argb(170, 0x8A, 0x86, 0x7C))
     }
 
     // ---- parts
@@ -445,6 +455,22 @@ class AircraftPanelView(ctx: Context) : CabinetView(ctx), FrontPanel {
         invalidate()
     }
 
+    override fun glows(): List<Glow> {
+        val out = arrayListOf(
+            Glow(RectF(cx - dialR, cy - dialR, cx + dialR, cy), Mood.AMBER, 1f),
+            Glow(RectF(sMeter), Mood.AMBER, 0.7f), Glow(RectF(kpMeter), Mood.AMBER, 0.7f),
+            Glow(RectF(eyeX - 10 * d, eyeY - 10 * d, eyeX + 10 * d, eyeY + 10 * d), Color.rgb(0x3C, 0xFF, 0x80), 0.8f),
+        )
+        val ts = 5.8f * t
+        for ((i, col) in bandLamps.withIndex()) if (col != null) {
+            val a = Math.toRadians(switchAngleFor(i).toDouble())
+            val lx = swX + swR * 2.4f * cos(a).toFloat(); val ly = swY + swR * 2.4f * sin(a).toFloat() - ts * 0.95f
+            out += Glow(RectF(lx - 5 * d, ly - 5 * d, lx + 5 * d, ly + 5 * d), col, 0.7f)
+        }
+        if (mood) out += Glow(RectF(width * 0.17f - 7 * d, swY - 7 * d, width * 0.17f + 7 * d, swY + 7 * d), Mood.LAMP, 1f)
+        return out
+    }
+
     override fun onDetachedFromWindow() { spinner?.cancel(); super.onDetachedFromWindow() }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
@@ -461,6 +487,7 @@ class AircraftPanelView(ctx: Context) : CabinetView(ctx), FrontPanel {
                 } else (selected + 1) % bands.size
                 if (i != selected) { selected = i; onSelect?.invoke(i) }
             }
+            hypot(x - width * 0.17f, y - swY) < 15 * d * 1.5f -> { mood = !mood; onMood?.invoke(mood) }
             abs(y - leverY) < leverR * 1.3f -> {
                 val i = leverX.indices.firstOrNull { abs(x - leverX[it]) < leverR * 1.4f }
                 if (i != null && i < toggles.size) {

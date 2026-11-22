@@ -2,6 +2,12 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v6.0
+
+- **Mood light.** One of the two spare sockets beside the speaker is now a **MOOD LIGHT** knob (on the receiver it replaces the TONE knob; on the aircraft set, the red AERIAL knob). Turn it on and the room goes dark around a table lamp just off the top corner: the dials, meters, jewel lamps and pilot lamps glow warm orange and the button lettering lights up amber. It fades in and out and is remembered.
+- **Bigger, older switches.** SOUND, MONITOR and GPS are big bakelite rockers in chrome escutcheons with a jewel lamp each, thumb-polished on the side you press, with the lettering rubbed thin.
+- **A radio that's been used, not just an old one.** Scratches, scuffs and grime on every panel; chrome worn through to brass on the dial bezel; plating rubbed back to bare metal on the plates; rust round the screws; dusty speaker cloth; yellowed, dusty dial glass; chipped paint on the receiver and aircraft panels; a coffee ring on the lid and on the log card; a creased, folded station chart; thumb-worn buttons with nicks in their rims.
+
 ## What's new in v5.9
 
 - **Worldwide tropo forecast.** Instead of fixed North Sea paths from eastern England, the forecast now looks at your own station and two rings of points 250 km and 500 km out on the eight compass bearings (17 Open-Meteo points in one request). A bearing counts as a ducting path when the duct is continuous along it: over your station and the 250 km point, or over the 250 km and 500 km points. The alert names the directions and how far the duct reaches, e.g. "NE to 500 km (6 h), E to 250 km (3 h)".

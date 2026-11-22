@@ -37,6 +37,8 @@ class MainActivity : Activity() {
     private var receiver: FrontPanel? = null          // receiver or aircraft drawn panel
     private var aircraft: AircraftPanelView? = null
     private lateinit var tropoBox: LinearLayout
+    private lateinit var moodLight: MoodLightView
+    private lateinit var contentRoot: View
     private var microwaveOpen = false
     private lateinit var logChart: LogChartView
     private lateinit var updateBtn: Button
@@ -62,6 +64,7 @@ class MainActivity : Activity() {
         PropWorker.schedule(this)
         Sfx.init(this)
         Radio.skin = Store.skin(this)
+        Mood.on = Store.moodLight(this)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -181,11 +184,22 @@ class MainActivity : Activity() {
                 "HF conditions for 80–10m are shown for reference. The tropo forecast is a model estimate, not Hepburn's index."
         })
 
-        setContentView(ScrollView(this).apply {
+        val scroll = ScrollView(this).apply {
             background = Radio.background(this@MainActivity)
             isFillViewport = true
             addView(root)
+        }
+        // The mood light sits over everything, fixed to the screen like the room's lighting.
+        moodLight = MoodLightView(this, scroll)
+        scroll.setOnScrollChangeListener { _, _, _, _, _ -> moodLight.invalidate() }
+        scroll.viewTreeObserver.addOnGlobalLayoutListener { moodLight.invalidate() }
+        setContentView(android.widget.FrameLayout(this).apply {
+            addView(scroll)
+            addView(moodLight, android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
         })
+        if (Mood.on) Mood.styleText(root, resources.displayMetrics.density)
+        contentRoot = root
 
         applyGpsMode()
         if (Store.useGps(this) && Locator.hasPermission(this)) refreshStationQuietly()
@@ -215,7 +229,7 @@ class MainActivity : Activity() {
         }
         val upper = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(256))
         }
         upper.addView(GrilleView(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.6f)
@@ -223,6 +237,8 @@ class MainActivity : Activity() {
         val tonePlateView = TonePlateView(this).apply {
             switches = toneSwitches()
             onToggle = { i, on -> toggle(i, on) }
+            mood = Mood.on
+            onMood = { on -> setMood(on) }
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply { leftMargin = dp(10) }
         }
         tonePlate = tonePlateView
@@ -282,6 +298,8 @@ class MainActivity : Activity() {
                 render(Store.loadReport(this@MainActivity), animateNeedle = true)
             }
             onToggle = { i, on -> toggle(i, on) }
+            mood = Mood.on
+            onMood = { on -> setMood(on) }
         }
         receiver = panel
         front.addView(panel)
@@ -319,6 +337,8 @@ class MainActivity : Activity() {
                 render(Store.loadReport(this@MainActivity), animateNeedle = true)
             }
             onToggle = { i, on -> toggle(i, on) }
+            mood = Mood.on
+            onMood = { on -> setMood(on) }
         }
         receiver = panel
         aircraft = panel
@@ -644,6 +664,21 @@ class MainActivity : Activity() {
     private fun toneSwitches() = listOf(
         "SOUND" to Store.sounds(this), "MONITOR" to Store.enabled(this), "GPS" to Store.useGps(this))
 
+    /**
+     * The mood light: the room goes dark around a table lamp and the dials, meters, lamps
+     * and button lettering glow warm orange. Fades in place; no rebuild.
+     */
+    private fun setMood(on: Boolean) {
+        Store.saveMoodLight(this, on)
+        Mood.on = on
+        tonePlate?.mood = on
+        receiver?.mood = on
+        Mood.styleText(contentRoot, resources.displayMetrics.density)
+        Mood.invalidateAll(contentRoot)
+        moodLight.set(on)
+        Sfx.detent(this)
+    }
+
     /** A tone-plate rocker was flipped. */
     private fun toggle(i: Int, on: Boolean) {
         when (i) {
@@ -899,7 +934,8 @@ class MainActivity : Activity() {
         val rule = if (lit) lamp else Color.argb(0xB0, 0xF0, 0xE4, 0xC4)
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply { setColor(Color.rgb(0x0A, 0x09, 0x08)); setStroke(dp(1), rule) }
+            background = WornDrawable(GradientDrawable().apply { setColor(Color.rgb(0x0A, 0x09, 0x08)); setStroke(dp(1), rule) },
+                f.mode.hashCode(), resources.displayMetrics.density, button = false)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(5), 0, dp(5)) }
             // Header band with the mode name.
