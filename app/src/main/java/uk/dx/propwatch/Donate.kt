@@ -18,16 +18,21 @@ object Donate {
         .appendQueryParameter("no_shipping", "1")
         .build()
 
-    /** A respectfully cheeky line for each amount on the slider. */
-    fun quip(pounds: Int): String = when (pounds) {
-        1 -> "One proper cuppa. Cheers, OM!"
-        2 -> "A coffee and a biscuit. Very civilised."
-        3 -> "Coffee, biscuit, and enough left for a solder tip."
-        in 4..5 -> "That's the morning brew sorted for the week."
-        in 6..7 -> "A round of teas for the whole shack."
-        in 8..9 -> "Steady on — you'll spoil me. Thank you!"
-        else -> "A tenner?! I'll log your name in gold ink. 73 and thank you!"
-    }
+    /** A respectfully cheeky line for each amount on the slider; every amount has its own. */
+    fun quip(pounds: Int): String = QUIPS[pounds.coerceIn(MIN, MAX) - MIN]
+
+    private val QUIPS = listOf(
+        "One proper cuppa. Cheers, OM!",                                   // £1
+        "A coffee and a biscuit. Very civilised.",                         // £2
+        "A coffee to go and a spare fuse for the rig.",                     // £3
+        "A flat white and a fresh roll of solder. Lovely.",                // £4
+        "That's the morning brew sorted for the week.",                    // £5
+        "A round of teas for the whole radio club.",                       // £6
+        "Seven coffees: one for every night of a DXpedition week.",         // £7
+        "Steady on — that's a new patch lead and a latte!",                // £8
+        "Nine coffees? You're keeping the valves warm all month.",          // £9
+        "A tenner?! I'll log your name in gold ink. 73 and thank you!",    // £10
+    )
 
     fun cups(pounds: Int) = if (pounds == 1) "ONE COFFEE" else "${words[pounds]} COFFEES"
 

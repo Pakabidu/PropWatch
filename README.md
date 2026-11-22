@@ -4,7 +4,7 @@ An Android app that runs the same checks as your scheduled task every few hours 
 
 ## What's new in v5.1
 
-- **Support PropWatch** in the lid: a cheeky ask to stand the operator a £1 coffee. Tap it to choose any amount from £1 to £10 on a slider (each step gets its own thank-you line), then **Donate with PayPal** opens PayPal's donation page in the browser with the amount and GBP filled in. Donations go to the PayPal account set in `Donate.kt`. Entirely optional: nothing in the app is locked behind it.
+- **Support PropWatch** in the lid: a cheeky ask to stand the operator a £1 coffee. Tap it to choose any amount from £1 to £10 on a slider (each of the ten amounts has its own thank-you line), then **Donate with PayPal** opens PayPal's donation page in the browser with the amount and GBP filled in. Donations go to the PayPal account set in `Donate.kt`. Entirely optional: nothing in the app is locked behind it.
 
 ## What's new in v5.0
 
