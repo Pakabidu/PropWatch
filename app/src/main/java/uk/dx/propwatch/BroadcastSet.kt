@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
@@ -42,7 +43,7 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private var downIndex = -1
 
     private val bezel = paint()
-    private val face = paint()
+    private val faceClip = Path()
     private val arc = paint { style = Paint.Style.STROKE; strokeWidth = 1.1f * d }
     private val tick = paint { strokeWidth = 0.9f * d }
     private val mark = paint { typeface = Radio.SERIF; textSize = 7f * t; textAlign = Paint.Align.CENTER }
@@ -51,7 +52,6 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private val needlePaint = paint(Color.rgb(0xF4, 0xEC, 0xD8)) { strokeWidth = 1.6f * d; strokeCap = Paint.Cap.ROUND }
     private val hub = paint()
     private val card = paint()
-    private val bulb = paint()
     private companion object { const val OFF_GLOW = 0.22f }
     private val label = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 7.5f * t; letterSpacing = 0.06f; textAlign = Paint.Align.CENTER }
     private val btn = paint()
@@ -82,21 +82,13 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
         c.save(); c.clipRect(dial); Wear.chips(c, dial, 91, 8, d, Color.argb(170, 0xB8, 0x8A, 0x40)); c.restore()
         val g = lampGlow
         // Backlit like a real dial lamp behind old glass: warm amber at full, a faint glow when off.
-        face.shader = RadialGradient(inner.centerX(), inner.bottom, inner.height() * 1.4f,
-            intArrayOf(Radio.mix(Color.rgb(0x1A, 0x14, 0x0E), Color.rgb(0xB0, 0x78, 0x30), g),
-                Radio.mix(Color.rgb(0x10, 0x0D, 0x0A), Color.rgb(0x5A, 0x38, 0x14), g),
-                Radio.mix(Color.rgb(0x08, 0x08, 0x08), Color.rgb(0x22, 0x14, 0x08), g)),
-            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-        c.drawRoundRect(inner, 6 * d, 6 * d, face)
-        // The bulb itself, glowing through the glass behind the needle's pivot.
-        bulb.shader = RadialGradient(inner.centerX(), inner.bottom, inner.height() * 0.9f,
-            Color.argb((150 * g).toInt(), 0xFF, 0xD8, 0x90), Color.argb(0, 0xFF, 0xC0, 0x60), Shader.TileMode.CLAMP)
-        c.drawRoundRect(inner, 6 * d, 6 * d, bulb)
+        c.save(); faceClip.reset(); faceClip.addRoundRect(inner, 6 * d, 6 * d, Path.Direction.CW); c.clipPath(faceClip)
+        Screen.face(c, inner, g)
+        c.restore()
 
         c.save(); c.clipRect(inner)
         // Gold scales brighten with the lamp, to a pale lit gold at full.
-        val gold = if (g < 0.6f) Radio.mix(Color.rgb(0x6A, 0x54, 0x30), Radio.GOLD, g / 0.6f)
-            else Radio.mix(Radio.GOLD, Color.rgb(0xFF, 0xE0, 0xA0), (g - 0.6f) / 0.4f)
+        val gold = Screen.gold(g)
         arc.color = gold; tick.color = gold; mark.color = gold; small.color = gold
         val px = inner.centerX(); val py = inner.bottom + inner.height() * 0.15f
         val a0 = -150f; val a1 = -30f
@@ -145,7 +137,7 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
         hub.shader = RadialGradient(px - d, inner.bottom - 2 * d, 6 * d, Color.rgb(0xF6, 0xF6, 0xF2), Radio.CHROME_DARK, Shader.TileMode.CLAMP)
         c.drawCircle(px, inner.bottom - 1 * d, 4 * d, hub)
         // Old glass: dust and a scratch.
-        c.save(); c.clipRect(inner); Wear.dust(c, inner, 92, 60, d, alpha = 60); Wear.scratches(c, inner, 93, 2, d, alpha = 40); c.restore()
+        c.save(); c.clipRect(inner); Screen.glass(c, inner, 92, d); c.restore()
     }
 
     private fun drawPlate(c: Canvas) {

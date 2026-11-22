@@ -397,22 +397,30 @@ object Screen {
         c.restore()
     }
 
-    /** The lit face: call inside a clip to the screen. Bulbs sit at [lampsX] × [lampY]. */
-    fun face(c: Canvas, r: RectF, g: Float, lampsX: FloatArray, lampY: Float, reach: Float) {
-        p.shader = RadialGradient(r.centerX(), lampY, reach,
+    private val m = android.graphics.Matrix()
+
+    /**
+     * The lit face, exactly as on the broadcast set: one bulb low in the middle, its pool
+     * scaled to the screen in the broadcast dial's proportions, so the brightness and
+     * vignette match on every screen whatever its shape. Call inside a clip to the screen.
+     */
+    fun face(c: Canvas, r: RectF, g: Float) {
+        val h = r.height()
+        m.setScale(r.width() / h / BROADCAST_ASPECT, 1f, r.centerX(), r.bottom)
+        p.shader = RadialGradient(r.centerX(), r.bottom, h * 1.4f,
             intArrayOf(Radio.mix(Color.rgb(0x1A, 0x14, 0x0E), Color.rgb(0xB0, 0x78, 0x30), g),
                 Radio.mix(Color.rgb(0x10, 0x0D, 0x0A), Color.rgb(0x5A, 0x38, 0x14), g),
                 Radio.mix(Color.rgb(0x08, 0x08, 0x08), Color.rgb(0x22, 0x14, 0x08), g)),
-            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP).apply { setLocalMatrix(m) }
         c.drawRect(r, p)
-        val a = ((if (Mood.on) 165 else 145) * g).toInt()
-        for (x in lampsX) {
-            p.shader = RadialGradient(x, lampY, reach * 0.65f, Color.argb(a, 0xFF, 0xD8, 0x90),
-                Color.argb(0, 0xFF, 0xC0, 0x60), Shader.TileMode.CLAMP)
-            c.drawRect(r, p)
-        }
+        // The bulb itself, glowing through the glass.
+        p.shader = RadialGradient(r.centerX(), r.bottom, h * 0.9f,
+            Color.argb((150 * g).toInt(), 0xFF, 0xD8, 0x90), Color.argb(0, 0xFF, 0xC0, 0x60), Shader.TileMode.CLAMP)
+            .apply { setLocalMatrix(m) }
+        c.drawRect(r, p)
         p.shader = null
     }
+    private const val BROADCAST_ASPECT = 2.25f
 
     /** Gold scales brightening with the lamp, to a pale lit gold at full. */
     fun gold(g: Float) = if (g < 0.6f) Radio.mix(Color.rgb(0x6A, 0x54, 0x30), Radio.GOLD, g / 0.6f)
@@ -421,19 +429,10 @@ object Screen {
     fun cream(g: Float) = if (g < 0.6f) Radio.mix(Color.rgb(0x6A, 0x5C, 0x44), Radio.CREAM, g / 0.6f)
         else Radio.mix(Radio.CREAM, PALE_CREAM, (g - 0.6f) / 0.4f)
 
-    /** Old glass over the face (still inside the clip): yellowed, glare, grime, dust, scratches. */
-    fun glass(c: Canvas, r: RectF, seed: Int, d: Float, dust: Int = 140) {
-        p.color = Color.argb(20, 0xD8, 0xB0, 0x50); c.drawRect(r, p)
-        if (Mood.on) { p.color = Color.argb(34, 0xFF, 0x9A, 0x3C); c.drawRect(r, p) }
-        p.color = Color.WHITE
-        p.shader = LinearGradient(r.left, r.top, r.right, r.bottom,
-            intArrayOf(Color.argb(0x1C, 255, 255, 255), Color.argb(0x08, 255, 255, 255), Color.argb(0, 255, 255, 255), Color.argb(0, 255, 255, 255)),
-            floatArrayOf(0f, 0.3f, 0.31f, 1f), Shader.TileMode.CLAMP)
-        c.drawRect(r, p)
-        p.shader = null
-        Wear.grime(c, r, d, depth = 10f, alpha = 70)
-        Wear.dust(c, r, seed, dust, d, alpha = 65)
-        Wear.scratches(c, r, seed + 1, 3, d, alpha = 40)
+    /** Old glass over the face (still inside the clip): dust and a scratch or two, as on the broadcast set. */
+    fun glass(c: Canvas, r: RectF, seed: Int, d: Float, dust: Int = 60) {
+        Wear.dust(c, r, seed, dust, d, alpha = 60)
+        Wear.scratches(c, r, seed + 1, 2, d, alpha = 40)
     }
 }
 
@@ -510,8 +509,8 @@ class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
         c.save()
         c.clipPath(screenClip)
         val s = inner.width(); val px = cx(); val py = cy()
-        // Backlit like the broadcast set: a bulb behind the pivot lights the black face amber.
-        Screen.face(c, inner, glow, floatArrayOf(px), py, s * 0.85f)
+        // Backlit exactly like the broadcast set.
+        Screen.face(c, inner, glow)
 
         val gold = Screen.gold(glow)
         val cream = Screen.cream(glow)
@@ -595,8 +594,8 @@ class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
         c.drawCircle(px, py, 9 * d, hub)
         c.drawCircle(px, py, 6 * d, hubRing)
         c.drawCircle(px, py, 2.5f * d, hubCap)
-        // Old glass: faintly yellowed, dusty, with a glare and a few scratches.
-        Screen.glass(c, inner, 22, d, dust = 160)
+        // Old glass: dust and a scratch or two.
+        Screen.glass(c, inner, 22, d, dust = 120)
         c.restore()
     }
 
@@ -764,9 +763,8 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
 
         c.save()
         c.clipPath(clip)
-        // Two bulbs behind the glass, low down, like the broadcast dial with its lamp full on.
-        Screen.face(c, inner, 1f, floatArrayOf(inner.left + inner.width() * 0.25f, inner.left + inner.width() * 0.75f),
-            inner.bottom, maxOf(inner.width() * 0.75f, inner.height() * 1.3f))
+        // Backlit exactly like the broadcast set with its lamp full on.
+        Screen.face(c, inner, 1f)
 
         val gx = inner.left + labW; val gw = inner.right - pad - gx
         val gy = inner.top + head; val gh = Bands.ALL.size * rowH
@@ -856,10 +854,9 @@ class LitNameplate(ctx: Context, private val text: String) : CabinetView(ctx), M
     override fun onDraw(c: Canvas) {
         Screen.bezel(c, outer, outer.height() / 2, 51, d)
         c.save(); c.clipPath(clip)
-        Screen.face(c, inner, 1f, floatArrayOf(inner.left + inner.width() * 0.3f, inner.left + inner.width() * 0.7f),
-            inner.bottom, inner.width() * 0.55f)
+        Screen.face(c, inner, 1f)
         fitText(c, text.uppercase(), inner.centerX(), inner.centerY() + ink.textSize * 0.36f, ink, inner.width() - inner.height())
-        Screen.glass(c, inner, 53, d, dust = 40)
+        Screen.glass(c, inner, 53, d, dust = 25)
         c.restore()
     }
 }
@@ -958,11 +955,10 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
         c.drawText("STATION LOG", w / 2, ribbonH / 2 + ribbonText.textSize * 0.36f, ribbonText)
         Hardware.jewel(c, 12 * d, ribbonH / 2, 3.4f * d, LOG_GREEN, d)   // a green lamp on the nameplate
 
-        // The screen: lit amber from two bulbs behind the glass, warming up with the reading.
+        // The screen: backlit like the broadcast set, warming up with the reading.
         Screen.bezel(c, outer, 10 * d, 41, d)
         c.save(); c.clipPath(clip)
-        Screen.face(c, inner, glow, floatArrayOf(inner.left + inner.width() * 0.25f, inner.left + inner.width() * 0.75f),
-            inner.bottom, maxOf(inner.width() * 0.8f, inner.height() * 1.2f))
+        Screen.face(c, inner, glow)
         val gold = Screen.gold(glow)
         val cream = Screen.cream(glow)
 
