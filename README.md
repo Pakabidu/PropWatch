@@ -6,6 +6,7 @@ An Android app that runs the same checks as your scheduled task every few hours 
 
 - **Phone location.** The station position now comes from the phone's GPS (or network location) by default, so bearings, the HF day/night choice and the settings follow you. Turn **Use phone location (GPS)** off to type coordinates instead. Settings shows the station's town, country and Maidenhead locator.
 - **Check my location** button: lights up an old-radio tuning screen that warms up, sweeps while the fix comes in, then shows your town, country, latitude/longitude, Maidenhead locator and fix accuracy.
+- **Fixes HTTP 429 on live spots.** The 6m, 2m and 70cm checks now share one PSKReporter query (6m–70cm), reused for 5 minutes, so repeated "Check now" taps don't hit the server again. If PSKReporter does rate-limit, the app waits at least 15 minutes (or as long as the server asks) and keeps showing the last results meanwhile.
 - Location is only read while the app is open; background checks use the last position. Town names come from the phone's geocoder, or OpenStreetMap if the phone has none. The North Sea tropo paths stay fixed, as they're specific to eastern England.
 
 ## What's new in v3

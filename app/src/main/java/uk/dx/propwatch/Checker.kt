@@ -73,10 +73,21 @@ class Checker(private val home: Station) {
             PathPoint("West Denmark", 56.00, 8.30, ukSide = false),
         )
 
+        // PSKReporter asks for at most one query every 5 minutes. One query covers 6m-70cm,
+        // is shared by all three live checks, and is reused for 5 minutes ("Check now" taps included).
+        private const val PSK_MIN_GAP_MS = 5 * 60_000L
+        private const val PSK_BACKOFF_MS = 15 * 60_000L
+        private const val PSK_STALE_OK_MS = 30 * 60_000L
+        private val pskLock = Any()
+        private var pskCache: Pair<Long, List<Spot>>? = null
+        private var pskBackoffUntil = 0L
+
         private val UK = ZoneId.of("Europe/London")
         private val FMT = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK)
         fun ukTime(ms: Long): String = FMT.format(Instant.ofEpochMilli(ms).atZone(UK))
     }
+
+    class HttpError(val code: Int, val retryAfterS: Long?, msg: String) : IOException(msg)
 
     data class PathPoint(val name: String, val lat: Double, val lon: Double, val ukSide: Boolean)
 
@@ -86,9 +97,9 @@ class Checker(private val home: Station) {
             safe("Aurora") { aurora(now) },
             safe("Tropo forecast") { tropoForecast(now) },
             safe("HF bands") { hfBands(now) },
-            safe("Live 6m spots") { live6m() },
-            safe("Live 2m spots") { liveSpots(now, "2m", "144000000-146000000") },
-            safe("Live 70cm spots") { liveSpots(now, "70cm", "432000000-433000000") },
+            safe("Live 6m spots") { live6m(now) },
+            safe("Live 2m spots") { liveSpots(now, "2m", 144_000_000L, 146_000_000L) },
+            safe("Live 70cm spots") { liveSpots(now, "70cm", 432_000_000L, 433_000_000L) },
             safe("Meteor scatter") { meteors(now) },
         )
         return Report(now, findings)
@@ -109,7 +120,8 @@ class Checker(private val home: Station) {
         c.setRequestProperty("User-Agent", "PropWatch/1.0 (amateur radio propagation monitor)")
         try {
             val code = c.responseCode
-            if (code !in 200..299) throw IOException("HTTP $code from ${c.url.host}")
+            if (code !in 200..299) throw HttpError(code, c.getHeaderField("Retry-After")?.trim()?.toLongOrNull(),
+                "HTTP $code from ${c.url.host}")
             return c.inputStream.bufferedReader().use { it.readText() }
         } finally {
             c.disconnect()
@@ -298,7 +310,30 @@ class Checker(private val home: Station) {
     // ---------------------------------------------------------------- live spots (PSKReporter)
 
     data class Spot(val a: String, val b: String, val km: Double, val la: Double, val loa: Double,
-                    val lb: Double, val lob: Double, val mode: String)
+                    val lb: Double, val lob: Double, val mode: String, val hz: Long)
+
+    /** Spots in [loHz, hiHz] from the shared, rate-limited PSKReporter query. */
+    private fun bandSpots(now: Long, loHz: Long, hiHz: Long): List<Spot> =
+        vhfSpots(now).filter { it.hz in loHz..hiHz }
+
+    private fun vhfSpots(now: Long): List<Spot> = synchronized(pskLock) {
+        val cached = pskCache
+        if (cached != null && now - cached.first < PSK_MIN_GAP_MS) return cached.second
+        if (now < pskBackoffUntil) {
+            if (cached != null && now - cached.first < PSK_STALE_OK_MS) return cached.second
+            throw IOException("PSKReporter is rate-limiting (HTTP 429). Next try after ${ukTime(pskBackoffUntil)} UK.")
+        }
+        try {
+            val spots = fetchSpots("50000000-433000000")
+            pskCache = now to spots
+            spots
+        } catch (e: HttpError) {
+            if (e.code != 429 && e.code != 503) throw e
+            pskBackoffUntil = now + maxOf(PSK_BACKOFF_MS, (e.retryAfterS ?: 0L) * 1000L)
+            if (cached != null && now - cached.first < PSK_STALE_OK_MS) return cached.second
+            throw IOException("PSKReporter is rate-limiting (HTTP ${e.code}). Next try after ${ukTime(pskBackoffUntil)} UK.")
+        }
+    }
 
     private val nonTropoModes = setOf("MSK144", "FSK441", "Q65", "JT65", "JT4", "JT6M", "ISCAT")
 
@@ -315,11 +350,12 @@ class Checker(private val home: Station) {
                 val rx = p.getAttributeValue(null, "receiverCallsign") ?: ""
                 val tx = p.getAttributeValue(null, "senderCallsign") ?: ""
                 val mode = (p.getAttributeValue(null, "mode") ?: "").uppercase()
+                val hz = p.getAttributeValue(null, "frequency")?.trim()?.toLongOrNull() ?: -1L
                 val ra = Geo.locToLatLon(p.getAttributeValue(null, "receiverLocator"))
                 val sa = Geo.locToLatLon(p.getAttributeValue(null, "senderLocator"))
                 if (ra != null && sa != null && rx.isNotBlank() && tx.isNotBlank() && mode !in nonTropoModes) {
                     val d = Geo.km(ra.first, ra.second, sa.first, sa.second)
-                    out += Spot(rx.uppercase(), tx.uppercase(), d, ra.first, ra.second, sa.first, sa.second, mode)
+                    out += Spot(rx.uppercase(), tx.uppercase(), d, ra.first, ra.second, sa.first, sa.second, mode, hz)
                 }
             }
             ev = p.next()
@@ -331,8 +367,8 @@ class Checker(private val home: Station) {
     private fun inNwEurope(lat: Double, lon: Double) = lat in 45.0..63.0 && lon in -11.0..16.0
     private fun pairKey(s: Spot) = listOf(s.a, s.b).sorted().joinToString("–")
 
-    private fun liveSpots(now: Long, band: String, frange: String): Finding {
-        val spots = fetchSpots(frange)
+    private fun liveSpots(now: Long, band: String, loHz: Long, hiHz: Long): Finding {
+        val spots = bandSpots(now, loHz, hiHz)
         val month = Instant.ofEpochMilli(now).atZone(ZoneOffset.UTC).monthValue
         val esSeason = month in 5..8 || month == 12
 
@@ -428,8 +464,8 @@ class Checker(private val home: Station) {
 
     // ---------------------------------------------------------------- live 6m
 
-    private fun live6m(): Finding {
-        val spots = fetchSpots("50000000-50500000")
+    private fun live6m(now: Long): Finding {
+        val spots = bandSpots(now, 50_000_000L, 50_500_000L)
         val es = spots.filter {
             it.km in SIXM_ES_MIN_KM..SIXM_ES_MAX_KM && (inNwEurope(it.la, it.loa) || inNwEurope(it.lb, it.lob))
         }
