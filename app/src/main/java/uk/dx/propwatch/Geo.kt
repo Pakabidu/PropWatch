@@ -33,6 +33,17 @@ object Geo {
         return lat to lon
     }
 
+    /** (lat, lon) to a 6-character Maidenhead locator, e.g. 52.98, -0.02 -> IO92XX. */
+    fun latLonToLoc(lat: Double, lon: Double): String {
+        val lo = (lon + 180.0).coerceIn(0.0, 359.9999)
+        val la = (lat + 90.0).coerceIn(0.0, 179.9999)
+        val sb = StringBuilder()
+        sb.append('A' + (lo / 20).toInt()).append('A' + (la / 10).toInt())
+        sb.append('0' + ((lo % 20) / 2).toInt()).append('0' + (la % 10).toInt())
+        sb.append('a' + ((lo % 2) * 12).toInt()).append('a' + ((la % 1) * 24).toInt())
+        return sb.toString()
+    }
+
     fun km(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val r = 6371.0
         val p1 = Math.toRadians(lat1)
