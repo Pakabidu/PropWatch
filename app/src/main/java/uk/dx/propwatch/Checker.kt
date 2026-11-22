@@ -31,7 +31,11 @@ data class Station(val lat: Double, val lon: Double)
  * Runs every check. All network calls are blocking, so call this off the main thread.
  * Thresholds mirror the original monitoring brief; tune them in the constants below.
  */
-class Checker(private val home: Station) {
+/**
+ * @param bands the tropo bands to check live (the user's choice, see [Store.visibleTropoBands]).
+ *   Each gets its own "Live … spots" reading; the tropo forecast names them too.
+ */
+class Checker(private val home: Station, private val bands: List<TropoBand> = TropoBands.CORE) {
 
     companion object {
         // Aurora: Kp 5.67 is "6-" on NOAA's scale, i.e. G2.
@@ -41,23 +45,7 @@ class Checker(private val home: Station) {
         const val DUCT_GRADIENT = -157.0
         const val MIN_DUCT_HOURS = 2
 
-        // Live spots (PSKReporter). Aircraft scatter on FT8 reaches ~800 km from the UK,
-        // so a single 700 km spot is not enough on its own.
-        const val TROPO_KM = 700.0
-        const val TROPO_PAIRS_2M = 5
-        const val TROPO_LONG_KM = 1000.0
-        const val TROPO_LONG_PAIRS = 2
-        const val TROPO_PAIRS_70CM = 2
-        const val ES_MIN_KM = 1000.0
-        const val ES_MAX_KM = 2500.0
-        const val ES_PAIRS = 2
-
-        // 6m: single-hop Es is 700-2500 km; multi-hop Es / F2 / TEP beyond 3500 km is the real prize.
-        const val SIXM_ES_MIN_KM = 700.0
-        const val SIXM_ES_MAX_KM = 2500.0
-        const val SIXM_ES_PAIRS = 3
-        const val SIXM_DX_KM = 3500.0
-        const val SIXM_DX_PAIRS = 2
+        // Live-spot thresholds per band live in SpotRules.
 
         const val KP_OBS = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
         const val KP_FC = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json"
@@ -73,13 +61,14 @@ class Checker(private val home: Station) {
             PathPoint("West Denmark", 56.00, 8.30, ukSide = false),
         )
 
-        // PSKReporter asks for at most one query every 5 minutes. One query covers 6m-70cm,
-        // is shared by all three live checks, and is reused for 5 minutes ("Check now" taps included).
+        // PSKReporter asks for at most one query every 5 minutes. One query covers every
+        // chosen band's window, is shared by all the live checks, and is reused for 5 minutes
+        // ("Check now" taps included).
         private const val PSK_MIN_GAP_MS = 5 * 60_000L
         private const val PSK_BACKOFF_MS = 15 * 60_000L
         private const val PSK_STALE_OK_MS = 30 * 60_000L
         private val pskLock = Any()
-        private var pskCache: Pair<Long, List<Spot>>? = null
+        private var pskCache: Triple<Long, LongRange, List<Spot>>? = null   // time, Hz range, spots
         private var pskBackoffUntil = 0L
 
         private val UK = ZoneId.of("Europe/London")
@@ -97,9 +86,7 @@ class Checker(private val home: Station) {
             safe("Aurora") { aurora(now) },
             safe("Tropo forecast") { tropoForecast(now) },
             safe("HF bands") { hfBands(now) },
-            safe("Live 6m spots") { live6m(now) },
-            safe("Live 2m spots") { liveSpots(now, "2m", 144_000_000L, 146_000_000L) },
-            safe("Live 70cm spots") { liveSpots(now, "70cm", 432_000_000L, 433_000_000L) },
+        ) + bands.map { b -> safe("Live ${b.label} spots") { liveBand(now, b) } } + listOf(
             safe("Meteor scatter") { meteors(now) },
         )
         return Report(now, findings)
@@ -302,40 +289,65 @@ class Checker(private val home: Station) {
         }
         val detail = "Ducting ${ukTime(ductHours.first())}–${ukTime(ductHours.last())} UK time " +
             "(${ductHours.size} h). Paths: $dirs. Peak est. index %.1f. $wx.\n".format(peak) +
-            "70cm usually beats 2m in a duct. Confidence $conf.\n" +
+            ductNote() + " Confidence $conf.\n" +
             "Source: Open-Meteo model profiles (a proxy for Hepburn — confirm on dxinfocentre.com)."
-        return Finding("Tropo forecast", true, "Tropo duct forecast — 2m & 70cm to the E/NE", detail)
+        return Finding("Tropo forecast", true, "Tropo duct forecast — ${ductBandsText()} to the E/NE", detail)
+    }
+
+    /** The chosen bands a duct favours most, by [TropoBand.ductSensitivityFactor]: "23cm, 70cm & 2m". */
+    private fun ductBandsText(): String {
+        val top = bands.sortedByDescending { it.ductSensitivityFactor }.take(3).map { it.label }
+        return when (top.size) {
+            0 -> "VHF/UHF"
+            1 -> top[0]
+            else -> top.dropLast(1).joinToString(", ") + " & " + top.last()
+        }
+    }
+
+    /** Which chosen bands a duct traps most easily, e.g. "Shallow ducts trap 23cm (×4.3) and 70cm (×2.1) before 2m." */
+    private fun ductNote(): String {
+        val sorted = bands.sortedByDescending { it.ductSensitivityFactor }
+        if (sorted.size < 2) return "Higher bands are trapped by shallower ducts."
+        val lead = sorted.take(2).joinToString(" and ") { "${it.label} (×%.1f)".format(it.ductSensitivityFactor) }
+        return "Shallow ducts trap $lead before ${sorted.last().label}."
     }
 
     // ---------------------------------------------------------------- live spots (PSKReporter)
 
-    data class Spot(val a: String, val b: String, val km: Double, val la: Double, val loa: Double,
-                    val lb: Double, val lob: Double, val mode: String, val hz: Long)
+    /**
+     * Spots for one band from the shared, rate-limited PSKReporter query. The query spans
+     * every chosen band's window; if the bands changed and the last query (under 5 minutes
+     * old) doesn't cover this one, it waits for the next check rather than query again.
+     */
+    private fun bandSpots(now: Long, band: TropoBand): List<Spot> {
+        val want = SpotRules.queryRangeHz(bands) ?: return emptyList()
+        val (range, spots) = vhfSpots(now, want)
+        val needed = SpotRules.windowsHz(band)
+        if (needed.any { it.first < range.first || it.last > range.last }) {
+            throw IOException("PSKReporter was queried under 5 minutes ago; ${band.label} is included from the next check.")
+        }
+        return spots.filter { SpotRules.inBand(it, band) }
+    }
 
-    /** Spots in [loHz, hiHz] from the shared, rate-limited PSKReporter query. */
-    private fun bandSpots(now: Long, loHz: Long, hiHz: Long): List<Spot> =
-        vhfSpots(now).filter { it.hz in loHz..hiHz }
-
-    private fun vhfSpots(now: Long): List<Spot> = synchronized(pskLock) {
+    private fun vhfSpots(now: Long, want: LongRange): Pair<LongRange, List<Spot>> = synchronized(pskLock) {
         val cached = pskCache
-        if (cached != null && now - cached.first < PSK_MIN_GAP_MS) return cached.second
+        fun covers(c: Triple<Long, LongRange, List<Spot>>) = c.second.first <= want.first && c.second.last >= want.last
+        if (cached != null && now - cached.first < PSK_MIN_GAP_MS) return cached.second to cached.third
         if (now < pskBackoffUntil) {
-            if (cached != null && now - cached.first < PSK_STALE_OK_MS) return cached.second
+            if (cached != null && now - cached.first < PSK_STALE_OK_MS && covers(cached)) return cached.second to cached.third
             throw IOException("PSKReporter is rate-limiting (HTTP 429). Next try after ${ukTime(pskBackoffUntil)} UK.")
         }
         try {
-            val spots = fetchSpots("50000000-433000000")
-            pskCache = now to spots
-            spots
+            val spots = fetchSpots("${want.first}-${want.last}")
+            pskCache = Triple(now, want, spots)
+            want to spots
         } catch (e: HttpError) {
             if (e.code != 429 && e.code != 503) throw e
             pskBackoffUntil = now + maxOf(PSK_BACKOFF_MS, (e.retryAfterS ?: 0L) * 1000L)
-            if (cached != null && now - cached.first < PSK_STALE_OK_MS) return cached.second
+            if (cached != null && now - cached.first < PSK_STALE_OK_MS && covers(cached)) return cached.second to cached.third
             throw IOException("PSKReporter is rate-limiting (HTTP ${e.code}). Next try after ${ukTime(pskBackoffUntil)} UK.")
         }
     }
-
-    private val nonTropoModes = setOf("MSK144", "FSK441", "Q65", "JT65", "JT4", "JT6M", "ISCAT")
 
     private fun fetchSpots(frange: String): List<Spot> {
         val url = "https://retrieve.pskreporter.info/query?flowStartSeconds=-1800" +
@@ -353,7 +365,7 @@ class Checker(private val home: Station) {
                 val hz = p.getAttributeValue(null, "frequency")?.trim()?.toLongOrNull() ?: -1L
                 val ra = Geo.locToLatLon(p.getAttributeValue(null, "receiverLocator"))
                 val sa = Geo.locToLatLon(p.getAttributeValue(null, "senderLocator"))
-                if (ra != null && sa != null && rx.isNotBlank() && tx.isNotBlank() && mode !in nonTropoModes) {
+                if (ra != null && sa != null && rx.isNotBlank() && tx.isNotBlank()) {
                     val d = Geo.km(ra.first, ra.second, sa.first, sa.second)
                     out += Spot(rx.uppercase(), tx.uppercase(), d, ra.first, ra.second, sa.first, sa.second, mode, hz)
                 }
@@ -363,53 +375,44 @@ class Checker(private val home: Station) {
         return out
     }
 
-    private fun inUkBenelux(lat: Double, lon: Double) = lat in 49.8..59.5 && lon in -8.5..7.3
-    private fun inNwEurope(lat: Double, lon: Double) = lat in 45.0..63.0 && lon in -11.0..16.0
-    private fun pairKey(s: Spot) = listOf(s.a, s.b).sorted().joinToString("–")
-
-    private fun liveSpots(now: Long, band: String, loHz: Long, hiHz: Long): Finding {
-        val spots = bandSpots(now, loHz, hiHz)
+    /** One band's live reading, judged by [SpotRules] relative to the station. */
+    private fun liveBand(now: Long, band: TropoBand): Finding {
+        val spots = bandSpots(now, band)
         val month = Instant.ofEpochMilli(now).atZone(ZoneOffset.UTC).monthValue
-        val esSeason = month in 5..8 || month == 12
-
-        val tropo = spots.filter {
-            it.km >= TROPO_KM && it.km <= 2800 && (inUkBenelux(it.la, it.loa) || inUkBenelux(it.lb, it.lob))
-        }
-        val tropoPairs = tropo.map(::pairKey).toSet()
-        val longPairs = tropo.filter { it.km >= TROPO_LONG_KM }.map(::pairKey).toSet()
-
-        val es = if (band == "2m" && esSeason) spots.filter {
-            it.km in ES_MIN_KM..ES_MAX_KM && (inNwEurope(it.la, it.loa) || inNwEurope(it.lb, it.lob))
-        } else emptyList()
-        val esPairs = es.map(::pairKey).toSet()
-
-        val mode = "Live $band spots"
-        val best = (tropo + es).maxByOrNull { it.km }
-        val bestTxt = best?.let { "best ${it.a}–${it.b} %.0f km (${it.mode})".format(it.km) } ?: ""
-
-        // In season, a cluster of 1000–2500 km spots is far more likely Es than tropo.
-        if (esPairs.size >= ES_PAIRS) {
-            val mid = es.maxByOrNull { it.km }!!
-            val far = if (inUkBenelux(mid.la, mid.loa)) mid.lb to mid.lob else mid.la to mid.loa
+        val v = SpotRules.evaluate(band, spots, home.lat, home.lon, month)
+        val r = SpotRules.rule(band)
+        val mode = "Live ${band.label} spots"
+        val bestTxt = v.best?.let { "best ${it.a}–${it.b} %.0f km (${it.mode})".format(it.km) } ?: ""
+        fun look(s: Spot): String {
+            val far = SpotRules.farEnd(s, home.lat, home.lon)
             val b = Geo.bearing(home.lat, home.lon, far.first, far.second)
-            return Finding(mode, true, "2m sporadic E in progress",
-                "${esPairs.size} paths 1000–2500 km in the last 30 min; $bestTxt. " +
-                    "Look ${Geo.compass(b)} (%.0f°) — Es moves fast, check now.\nSource: PSKReporter.".format(b))
+            return "${Geo.compass(b)} (%.0f°)".format(b)
         }
-        val tropoAlert = if (band == "2m") tropoPairs.size >= TROPO_PAIRS_2M || longPairs.size >= TROPO_LONG_PAIRS
-        else tropoPairs.size >= TROPO_PAIRS_70CM
-        if (tropoAlert) {
-            val farEnds = tropo.map { if (inUkBenelux(it.la, it.loa) && !inUkBenelux(it.lb, it.lob)) it.lb to it.lob else it.la to it.loa }
-            val dirs = farEnds.map { Geo.compass(Geo.bearing(home.lat, home.lon, it.first, it.second)) }
-                .groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(3).joinToString(", ") { it.key }
-            return Finding(mode, true, "$band tropo opening in progress",
-                "${tropoPairs.size} paths ≥700 km touching UK/Benelux in the last 30 min; $bestTxt. Directions: $dirs.\n" +
-                    "Source: PSKReporter (digital modes; MS/EME modes excluded).")
+        val n0nbh = if (band.id != "6m" && band.id != "4m") "" else try {
+            solar["vhf/E-Skip/europe_${band.id}"]?.let { " N0NBH Europe ${band.label} Es: $it." } ?: ""
+        } catch (_: Exception) { "" }
+        val near = "%.0f km".format(SpotRules.NEAR_KM)
+        return when (v.kind) {
+            SpotRules.Kind.DX -> Finding(mode, true, "${band.label} long-haul DX open (multi-hop Es / F2)",
+                "${v.pairs} paths ≥%.0f km within $near of you in the last 30 min; $bestTxt. ".format(r.dxKm) +
+                    "Look ${look(v.best!!)}.$n0nbh\nSource: PSKReporter.")
+            SpotRules.Kind.ES -> Finding(mode, true, "${band.label} sporadic E in progress",
+                "${v.pairs} paths %.0f–%.0f km in your area in the last 30 min; $bestTxt. ".format(r.esMinKm, r.esMaxKm) +
+                    "Look ${look(v.best!!)} — Es moves fast, check now.$n0nbh\nSource: PSKReporter.")
+            SpotRules.Kind.TROPO -> {
+                val dirs = v.spots.map { s -> SpotRules.farEnd(s, home.lat, home.lon) }
+                    .map { Geo.compass(Geo.bearing(home.lat, home.lon, it.first, it.second)) }
+                    .groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(3).joinToString(", ") { it.key }
+                Finding(mode, true, "${band.label} tropo opening in progress",
+                    "${v.pairs} path${if (v.pairs == 1) "" else "s"} ≥%.0f km within $near of you in the last 30 min; ".format(r.tropoKm) +
+                        "$bestTxt. Directions: $dirs.\nSource: PSKReporter (digital modes; MS/EME modes excluded).")
+            }
+            SpotRules.Kind.QUIET -> Finding(mode, false,
+                if (v.considered == 0) "No ${band.label} reports in the last 30 min"
+                else if (r.tropoKm == null) "Normal — ${v.pairs} Es-range paths${if (bestTxt.isNotEmpty()) ", $bestTxt" else ""}"
+                else "Normal — ${v.pairs} paths ≥%.0f km${if (bestTxt.isNotEmpty()) ", $bestTxt" else ""}".format(r.tropoKm),
+                "${v.considered} ${band.label} reports checked.$n0nbh")
         }
-        return Finding(mode, false,
-            if (spots.isEmpty()) "No $band reports in the last 30 min"
-            else "Normal — ${tropoPairs.size} paths ≥700 km${if (bestTxt.isNotEmpty()) ", $bestTxt" else ""}",
-            "${spots.size} $band reports checked.")
     }
 
     // ---------------------------------------------------------------- HF + 6m/4m status (N0NBH)
@@ -460,44 +463,6 @@ class Checker(private val home: Station) {
         return Finding("HF bands", tenOpen,
             (if (tenOpen) "10m & 12m open — " else "") + "${if (day) "Day" else "Night"}: ${row(if (day) "day" else "night")}",
             detail, lowGrade = true)
-    }
-
-    // ---------------------------------------------------------------- live 6m
-
-    private fun live6m(now: Long): Finding {
-        val spots = bandSpots(now, 50_000_000L, 50_500_000L)
-        val es = spots.filter {
-            it.km in SIXM_ES_MIN_KM..SIXM_ES_MAX_KM && (inNwEurope(it.la, it.loa) || inNwEurope(it.lb, it.lob))
-        }
-        val dx = spots.filter { it.km >= SIXM_DX_KM && (inUkBenelux(it.la, it.loa) || inUkBenelux(it.lb, it.lob)) }
-        val esPairs = es.map(::pairKey).toSet()
-        val dxPairs = dx.map(::pairKey).toSet()
-        val n0nbh = try {
-            listOfNotNull(solar["vhf/E-Skip/europe_6m"]?.let { "6m $it" }, solar["vhf/E-Skip/europe_4m"]?.let { "4m $it" })
-                .joinToString(", ").takeIf { it.isNotEmpty() }?.let { " N0NBH Europe Es: $it." } ?: ""
-        } catch (_: Exception) { "" }
-        fun look(s: Spot): String {
-            val far = if (inUkBenelux(s.la, s.loa)) s.lb to s.lob else s.la to s.loa
-            val b = Geo.bearing(home.lat, home.lon, far.first, far.second)
-            return "${Geo.compass(b)} (%.0f°)".format(b)
-        }
-        fun best(l: List<Spot>) = l.maxByOrNull { it.km }!!.let { "best ${it.a}–${it.b} %.0f km (${it.mode})".format(it.km) }
-        val mode = "Live 6m spots"
-        if (dxPairs.size >= SIXM_DX_PAIRS) {
-            val far = dx.maxByOrNull { it.km }!!
-            return Finding(mode, true, "6m long-haul DX open (multi-hop Es / F2)",
-                "${dxPairs.size} paths ≥3500 km touching UK/Benelux in the last 30 min; ${best(dx)}. " +
-                    "Look ${look(far)}.$n0nbh\nSource: PSKReporter.")
-        }
-        if (esPairs.size >= SIXM_ES_PAIRS) {
-            return Finding(mode, true, "6m sporadic E in progress",
-                "${esPairs.size} paths 700–2500 km in NW Europe in the last 30 min; ${best(es)}. " +
-                    "Look ${look(es.maxByOrNull { it.km }!!)}. Try 50.313 FT8 or 50.150 SSB.$n0nbh\nSource: PSKReporter.")
-        }
-        return Finding(mode, false,
-            if (spots.isEmpty()) "No 6m reports in the last 30 min"
-            else "Normal — ${esPairs.size} Es-range paths${if (es.isNotEmpty()) ", ${best(es)}" else ""}",
-            "${spots.size} 6m reports checked.$n0nbh")
     }
 
     // ---------------------------------------------------------------- meteors

@@ -359,7 +359,7 @@ class MainActivity : Activity() {
         tropoBox.addView(TextView(this).apply {
             textSize = 14f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.9f; setPadding(0, dp(2), 0, dp(6))
             text = "ITU REGION ${region?.number ?: "?"} · LOCATOR ${grid.uppercase()}\n" +
-                "Tap to choose the bands you work. Defaults follow your region."
+                "Live checks cover the bands switched on here. Defaults follow your region."
         })
         for (b in TropoBands.CORE) tropoBox.addView(bandToggle(b, region, b.id in visible, b.id in defaults))
         val shownMw = TropoBands.MICROWAVE.count { it.id in visible }
@@ -675,7 +675,7 @@ class MainActivity : Activity() {
         if (Store.useGps(this)) Locator.lastKnown(this)?.let { useFix(it) }
         val station = Store.station(this)
         Thread {
-            val r = Checker(station).run()
+            val r = Checker(station, Store.visibleTropoBands(this)).run()
             Store.saveReport(this, r)
             Notifier.handle(this, r)
             runOnUiThread {
