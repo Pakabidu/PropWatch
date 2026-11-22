@@ -56,6 +56,7 @@ object Store {
                 .put("detail", f.detail).put("low", f.lowGrade))
         }
         p(ctx).edit().putString("report", JSONObject().put("time", r.timeMs).put("findings", arr).toString()).apply()
+        appendHistory(ctx, r)
     }
 
     fun loadReport(ctx: Context): Report? {
@@ -70,6 +71,35 @@ object Store {
             })
         } catch (e: Exception) {
             null
+        }
+    }
+
+    /** One entry per check for the lid's 24-hour log chart: time plus a level per band. */
+    data class LogEntry(val timeMs: Long, val levels: Map<String, Int>)
+
+    private const val HISTORY_MS = 26 * 3600_000L
+
+    private fun appendHistory(ctx: Context, r: Report) {
+        val arr = JSONArray()
+        for (e in history(ctx)) if (r.timeMs - e.timeMs < HISTORY_MS && e.timeMs < r.timeMs) arr.put(entryJson(e))
+        arr.put(entryJson(LogEntry(r.timeMs, Bands.ALL.associate { it.first to Bands.level(r.findings, it.first) })))
+        p(ctx).edit().putString("history", arr.toString()).apply()
+    }
+
+    private fun entryJson(e: LogEntry) = JSONObject().put("t", e.timeMs).apply {
+        for ((k, v) in e.levels) put(k, v)
+    }
+
+    fun history(ctx: Context): List<LogEntry> {
+        val s = p(ctx).getString("history", null) ?: return emptyList()
+        return try {
+            val a = JSONArray(s)
+            (0 until a.length()).map { i ->
+                val o = a.getJSONObject(i)
+                LogEntry(o.getLong("t"), Bands.ALL.associate { it.first to o.optInt(it.first, 0) })
+            }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 
