@@ -73,7 +73,7 @@ class MainActivity : Activity() {
         }
         val upper = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(170))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200))
         }
         upper.addView(GrilleView(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.6f)
@@ -102,7 +102,7 @@ class MainActivity : Activity() {
         }
         front.addView(bandPlate)
         status = TextView(this).apply {
-            textSize = 12f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.85f
+            textSize = 15f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.95f
             gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(10))
         }
         front.addView(status)
@@ -158,7 +158,7 @@ class MainActivity : Activity() {
         lid.addView(label("Longitude")); lid.addView(lon)
         lid.addView(label("Check every (hours, 1–12)")); lid.addView(interval)
         lid.addView(TextView(this).apply {
-            textSize = 11f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.7f; setPadding(0, dp(10), 0, dp(2))
+            textSize = 14f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.9f; setPadding(0, dp(10), 0, dp(2))
             text = "Front-panel rockers: SOUND switch sounds · MONITOR background checks · GPS phone location. " +
                 "They take effect at once."
         })
@@ -187,14 +187,14 @@ class MainActivity : Activity() {
         updateBtn = radioButton("Check for updates") { checkForUpdate() }
         lid.addView(updateBtn)
         lid.addView(TextView(this).apply {
-            textSize = 11f; typeface = Radio.MONO; setTextColor(Radio.BRASS); gravity = Gravity.CENTER
+            textSize = 13f; typeface = Radio.MONO; setTextColor(Radio.BRASS); gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, 0)
             text = "PROPWATCH ${Updater.currentName(this@MainActivity)} · BUILD ${Updater.currentBuild(this@MainActivity)}"
         })
         lid.addView(section("Support PropWatch"))
         lid.addView(donatePanel())
         lid.addView(TextView(this).apply {
-            textSize = 12f; setTextColor(Radio.CREAM); alpha = 0.55f; setPadding(0, dp(16), 0, 0)
+            textSize = 15f; setTextColor(Radio.CREAM); alpha = 0.8f; setPadding(0, dp(16), 0, 0)
             text = "Alerts only fire when a threshold is met: tropo ducting forecast along the North Sea paths " +
                 "or a live cluster of ≥700 km spots, Kp ≥ 6- (or a G2 watch), 2m or 6m Es in progress, 6m " +
                 "long-haul DX, or a major meteor shower peak or 10m/12m opening (heads-ups). HF conditions for " +
@@ -228,7 +228,8 @@ class MainActivity : Activity() {
         setTextColor(Radio.CREAM)
         background = Radio.buttonBg(this@MainActivity)
         stateListAnimator = null
-        minHeight = dp(52)
+        textSize = 17f
+        minHeight = dp(60)
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(6), 0, dp(6)) }
         setOnClickListener { Sfx.click(this@MainActivity); onClick() }
@@ -249,16 +250,16 @@ class MainActivity : Activity() {
             setPadding(dp(10), dp(if (header) 4 else 11), dp(10), dp(if (header) 4 else 11))
             if (header) setBackgroundColor(Radio.CREAM)
             addView(TextView(context).apply {
-                text = a; textSize = if (header) 10f else 14f
+                text = a; textSize = if (header) 13f else 17f
                 typeface = if (header) Radio.SERIF else Typeface.SERIF
                 letterSpacing = if (header) 0.3f else 0f
                 setTextColor(if (header) Radio.INK else Radio.CREAM)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(TextView(context).apply {
-                text = b; textSize = 10f; typeface = Radio.SERIF; letterSpacing = 0.15f; gravity = Gravity.END
+                text = b; textSize = 13f; typeface = Radio.SERIF; letterSpacing = 0.1f; gravity = Gravity.END
                 setTextColor(if (header) Radio.INK else Radio.GOLD)
-                layoutParams = LinearLayout.LayoutParams(dp(64), LinearLayout.LayoutParams.WRAP_CONTENT)
+                layoutParams = LinearLayout.LayoutParams(dp(78), LinearLayout.LayoutParams.WRAP_CONTENT)
             })
         }
         return LinearLayout(this).apply {
@@ -289,7 +290,7 @@ class MainActivity : Activity() {
         var pounds = Donate.MIN
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(TextView(this).apply {
-            textSize = 14f; typeface = Typeface.SERIF; setTextColor(Radio.CREAM); setPadding(0, dp(2), 0, dp(4))
+            textSize = 17f; typeface = Typeface.SERIF; setTextColor(Radio.CREAM); setPadding(0, dp(2), 0, dp(4))
             text = "PropWatch is free and always will be. It runs on valves, solder and strong coffee, though. " +
                 "If it's caught you an opening, would you stand the operator a £1 cuppa?"
         })
@@ -302,13 +303,13 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
         }
         val amount = TextView(this).apply {
-            textSize = 34f; typeface = Radio.SERIF; setTextColor(Radio.GOLD); gravity = Gravity.CENTER
+            textSize = 44f; typeface = Radio.SERIF; setTextColor(Radio.GOLD); gravity = Gravity.CENTER
         }
         val cups = TextView(this).apply {
-            textSize = 10f; typeface = Radio.SERIF; letterSpacing = 0.3f; setTextColor(Radio.CREAM); gravity = Gravity.CENTER
+            textSize = 13f; typeface = Radio.SERIF; letterSpacing = 0.25f; setTextColor(Radio.CREAM); gravity = Gravity.CENTER
         }
         val quip = TextView(this).apply {
-            textSize = 13f; typeface = Radio.SERIF_ITALIC; setTextColor(Radio.CREAM); alpha = 0.85f
+            textSize = 17f; typeface = Radio.SERIF_ITALIC; setTextColor(Radio.CREAM); alpha = 0.95f
             gravity = Gravity.CENTER; setPadding(0, dp(6), 0, dp(4)); minLines = 2
         }
         lateinit var pay: Button
@@ -337,11 +338,11 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(8), 0, dp(8), 0)
             addView(TextView(context).apply {
-                text = "£${Donate.MIN}"; textSize = 10f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
+                text = "£${Donate.MIN}"; textSize = 14f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(TextView(context).apply {
-                text = "£${Donate.MAX}"; textSize = 10f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
+                text = "£${Donate.MAX}"; textSize = 14f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
             })
         }
         pay = radioButton("") {
@@ -350,7 +351,7 @@ class MainActivity : Activity() {
         chooser.addView(amount); chooser.addView(cups); chooser.addView(quip)
         chooser.addView(slider); chooser.addView(ends); chooser.addView(pay)
         chooser.addView(TextView(this).apply {
-            textSize = 10.5f; setTextColor(Radio.CREAM); alpha = 0.6f; gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
+            textSize = 14f; setTextColor(Radio.CREAM); alpha = 0.85f; gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
             text = "Opens PayPal in your browser. Pay by card or PayPal account; nothing is charged in the app."
         })
         show()
@@ -372,8 +373,8 @@ class MainActivity : Activity() {
      * lid's "operating instructions" headers. pill: the rounded nameplate across the top.
      */
     private fun section(t: String, first: Boolean = false, pill: Boolean = false) = TextView(this).apply {
-        text = t.uppercase(); textSize = if (pill) 11f else 10.5f; typeface = Radio.SERIF
-        letterSpacing = if (pill) 0.45f else 0.3f
+        text = t.uppercase(); textSize = if (pill) 14f else 13.5f; typeface = Radio.SERIF
+        letterSpacing = if (pill) 0.3f else 0.22f
         setTextColor(Radio.INK); gravity = Gravity.CENTER
         setPadding(dp(8), dp(if (pill) 5 else 3), dp(8), dp(if (pill) 5 else 3))
         background = GradientDrawable().apply {
@@ -384,13 +385,14 @@ class MainActivity : Activity() {
     }
 
     private fun label(t: String) = TextView(this).apply {
-        text = t; textSize = 11f; typeface = Radio.MONO; setTextColor(Radio.BRASS); setPadding(0, dp(8), 0, 0)
+        text = t; textSize = 14f; typeface = Radio.MONO; setTextColor(Radio.BRASS); setPadding(0, dp(10), 0, 0)
     }
 
     private fun number(hint: String, value: String, decimal: Boolean = true) = EditText(this).apply {
         this.hint = hint
         setText(value)
         typeface = Radio.MONO
+        textSize = 18f
         setTextColor(Radio.CREAM)
         setHintTextColor(Color.argb(0x80, 0xF1, 0xE6, 0xC8))
         backgroundTintList = ColorStateList.valueOf(Radio.BRASS)
@@ -670,7 +672,7 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(5), 0, dp(5)) }
             // Header band with the mode name.
             addView(TextView(context).apply {
-                text = f.mode.uppercase(); textSize = 9.5f; typeface = Radio.SERIF; letterSpacing = 0.3f
+                text = f.mode.uppercase(); textSize = 12.5f; typeface = Radio.SERIF; letterSpacing = 0.22f
                 gravity = Gravity.CENTER; setTextColor(Radio.INK); setPadding(0, dp(2), 0, dp(2))
                 setBackgroundColor(if (lit) lamp else Radio.CREAM)
             })
@@ -693,10 +695,10 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     addView(TextView(context).apply {
-                        text = f.headline; textSize = 15f; setTextColor(Radio.CREAM); setPadding(0, 0, 0, dp(3))
+                        text = f.headline; textSize = 19f; setTextColor(Radio.CREAM); setPadding(0, 0, 0, dp(4))
                     })
                     if (f.detail.isNotBlank()) addView(TextView(context).apply {
-                        text = f.detail; textSize = 13f; setTextColor(Radio.CREAM); alpha = 0.75f
+                        text = f.detail; textSize = 16f; setTextColor(Radio.CREAM); alpha = 0.88f
                     })
                 })
             })

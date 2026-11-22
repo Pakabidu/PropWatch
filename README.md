@@ -2,6 +2,11 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v5.2
+
+- **Bigger lettering everywhere.** Text on the dial, plates, log chart and station log is about 30% larger, and now also follows the phone's font-size setting (up to 1.5x), with the layout growing to fit. Readings, sources, settings and buttons use larger, higher-contrast type too.
+- Every donation amount has its own thank-you line.
+
 ## What's new in v5.1
 
 - **Support PropWatch** in the lid: a cheeky ask to stand the operator a £1 coffee. Tap it to choose any amount from £1 to £10 on a slider (each of the ten amounts has its own thank-you line), then **Donate with PayPal** opens PayPal's donation page in the browser with the amount and GBP filled in. Donations go to the PayPal account set in `Donate.kt`. Entirely optional: nothing in the app is locked behind it.
