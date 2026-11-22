@@ -457,8 +457,8 @@ class AircraftPanelView(ctx: Context) : CabinetView(ctx), FrontPanel, MoodGlow {
 
     override fun glows(): List<Glow> {
         val out = arrayListOf(
-            Glow(RectF(cx - dialR, cy - dialR, cx + dialR, cy), Mood.AMBER, 1f),
-            Glow(RectF(sMeter), Mood.AMBER, 0.7f), Glow(RectF(kpMeter), Mood.AMBER, 0.7f),
+            Glow(RectF(cx - dialR, cy - dialR, cx + dialR, cy), Mood.AMBER, 1f, screen = true),
+            Glow(RectF(sMeter), Mood.AMBER, 0.7f, screen = true, radius = 4 * d), Glow(RectF(kpMeter), Mood.AMBER, 0.7f, screen = true, radius = 4 * d),
             Glow(RectF(eyeX - 10 * d, eyeY - 10 * d, eyeX + 10 * d, eyeY + 10 * d), Color.rgb(0x3C, 0xFF, 0x80), 0.8f),
         )
         val ts = 5.8f * t

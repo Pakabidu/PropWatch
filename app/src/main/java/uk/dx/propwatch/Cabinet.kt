@@ -526,7 +526,7 @@ class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
         c.restore()
     }
 
-    override fun glows(): List<Glow> = listOf(Glow(RectF(inner), Mood.AMBER, 1f))
+    override fun glows(): List<Glow> = listOf(Glow(RectF(inner), Mood.AMBER, 1f, screen = true, radius = 16 * d))
     private val fill = paint()
 
     private fun levelPos(level: Int) = when (level) { 2 -> 0.8f; 1 -> 0.5f; else -> 0.2f }
@@ -649,7 +649,7 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private val paperRect = RectF()
 
     /** The receiver's chart is backlit amber, so it glows in the dark. */
-    override fun glows(): List<Glow> = if (Radio.receiver) listOf(Glow(RectF(paperRect), Mood.AMBER, 0.6f)) else emptyList()
+    override fun glows(): List<Glow> = if (Radio.receiver) listOf(Glow(RectF(paperRect), Mood.AMBER, 0.6f, screen = true)) else emptyList()
     private val speck = paint()
     private val fine = paint(Color.argb(0x73, 0xA0, 0x82, 0x50)) { strokeWidth = 0.5f * d }
     private val bold = paint(Color.argb(0xCC, 0x5A, 0x46, 0x28)) { strokeWidth = 0.9f * d }
@@ -778,7 +778,7 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
     /** The receiver's backlit amber chart glows; so does the red station pin. */
     override fun glows(): List<Glow> {
         val out = ArrayList<Glow>()
-        if (Radio.receiver) out += Glow(RectF(mapRect), Mood.AMBER, 0.6f)
+        if (Radio.receiver) out += Glow(RectF(mapRect), Mood.AMBER, 0.6f, screen = true)
         if (!pinLat.isNaN() && !locating) {
             val x = mapX(pinLon); val y = mapY(pinLat)
             out += Glow(RectF(x - 5 * d, y - 5 * d, x + 5 * d, y + 5 * d), Color.rgb(0xFF, 0x50, 0x30), 0.7f)

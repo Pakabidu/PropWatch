@@ -510,7 +510,8 @@ class ReceiverPanelView(ctx: Context) : CabinetView(ctx), FrontPanel, MoodGlow {
     }
 
     override fun glows(): List<Glow> {
-        val out = arrayListOf(Glow(RectF(dial), Mood.AMBER, 1f), Glow(RectF(sMeter), Mood.AMBER, 0.8f), Glow(RectF(kpMeter), Mood.AMBER, 0.8f))
+        val out = arrayListOf(Glow(RectF(dial), Mood.AMBER, 1f, screen = true, radius = 8 * d),
+            Glow(RectF(sMeter), Mood.AMBER, 0.8f, screen = true, radius = 8 * d), Glow(RectF(kpMeter), Mood.AMBER, 0.8f, screen = true, radius = 8 * d))
         val ts = 5.8f * t
         for ((i, col) in bandLamps.withIndex()) if (col != null) {
             val a = Math.toRadians(switchAngleFor(i) - 90.0)

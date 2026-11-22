@@ -173,8 +173,13 @@ class WornDrawable(base: Drawable, private val seed: Int, private val d: Float, 
     }
 }
 
-/** A warm glow a part gives off when the mood light is on: a rect in the part's own coordinates. */
-data class Glow(val rect: RectF, val colour: Int = Mood.AMBER, val strength: Float = 1f)
+/**
+ * A warm glow a part gives off when the mood light is on: a rect in the part's own
+ * coordinates. A [screen] (a dial or meter window) is lit from behind, so the room's
+ * darkness doesn't fall on it; lamps and buttons just throw a halo.
+ */
+data class Glow(val rect: RectF, val colour: Int = Mood.AMBER, val strength: Float = 1f, val screen: Boolean = false,
+                val radius: Float = 0f)
 
 /** A part with lit screens, dials or lamps that glow when the mood light is on. */
 interface MoodGlow {
@@ -218,7 +223,6 @@ class MoodLightView(ctx: Context, private val content: View) : View(ctx) {
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
     private val here = IntArray(2)
     private val there = IntArray(2)
-    private val gr = RectF()
 
     init { isClickable = false; isFocusable = false; importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
 
@@ -232,11 +236,25 @@ class MoodLightView(ctx: Context, private val content: View) : View(ctx) {
         }
     }
 
+    private data class Lit(val rect: RectF, val glow: Glow)
+    private val lit = ArrayList<Lit>()
+    private val wash = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val cut = Path()
+
     override fun onDraw(c: Canvas) {
         if (fade <= 0.01f) return
         val w = width.toFloat(); val h = height.toFloat()
+        getLocationInWindow(here)
+        lit.clear()
+        collect(content, h)
+
+        // The dark room, warmest and brightest near the lamp, kept off the backlit screens.
         val lx = w * 0.9f; val ly = -h * 0.06f
-        // The dark room, warmest and brightest near the lamp.
+        c.save()
+        for (l in lit) if (l.glow.screen) {
+            cut.reset(); cut.addRoundRect(l.rect, l.glow.radius, l.glow.radius, Path.Direction.CW)
+            c.clipOutPath(cut)
+        }
         dark.shader = RadialGradient(lx, ly, h * 1.15f,
             intArrayOf(Color.argb((40 * fade).toInt(), 0x30, 0x18, 0x06), Color.argb((150 * fade).toInt(), 0x14, 0x0A, 0x04),
                 Color.argb((205 * fade).toInt(), 0x06, 0x03, 0x01)),
@@ -245,13 +263,37 @@ class MoodLightView(ctx: Context, private val content: View) : View(ctx) {
         spill.shader = RadialGradient(lx, ly, w * 0.95f, Color.argb((70 * fade).toInt(), 0xFF, 0xB0, 0x60),
             Color.argb(0, 0xFF, 0xB0, 0x60), Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, w, h, spill)
+        c.restore()
 
-        // Glow from everything lit, wherever it currently is on screen.
-        getLocationInWindow(here)
-        drawGlows(c, content, w, h)
+        // Backlit screens: a little dimmer than daylight, washed warm by their own lamps.
+        for (l in lit) if (l.glow.screen) {
+            wash.shader = null
+            val rr = l.glow.radius
+            wash.color = Color.argb((50 * fade).toInt(), 0x10, 0x06, 0x00); c.drawRoundRect(l.rect, rr, rr, wash)
+            wash.shader = RadialGradient(l.rect.centerX(), l.rect.bottom, maxOf(l.rect.width(), l.rect.height()),
+                Color.argb((70 * l.glow.strength * fade).toInt(), Color.red(l.glow.colour), Color.green(l.glow.colour), Color.blue(l.glow.colour)),
+                Color.argb((25 * l.glow.strength * fade).toInt(), Color.red(l.glow.colour), Color.green(l.glow.colour), Color.blue(l.glow.colour)),
+                Shader.TileMode.CLAMP)
+            c.drawRoundRect(l.rect, rr, rr, wash)
+        }
+        // Halos: light spilling out around every lit thing.
+        for (l in lit) {
+            val g = l.glow; val r = l.rect
+            val rad = maxOf(r.width(), r.height()) * (if (g.screen) 0.7f else 0.75f) + (if (g.screen) 18 else 10) * d
+            val a = ((if (g.screen) 60 else 110) * g.strength * fade).toInt().coerceIn(0, 255)
+            glow.shader = RadialGradient(r.centerX(), r.centerY(), rad,
+                intArrayOf(Color.argb(a, Color.red(g.colour), Color.green(g.colour), Color.blue(g.colour)),
+                    Color.argb(a / 3, Color.red(g.colour), Color.green(g.colour), Color.blue(g.colour)),
+                    Color.argb(0, Color.red(g.colour), Color.green(g.colour), Color.blue(g.colour))),
+                floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+            c.save(); c.scale(1f, (r.height() / r.width()).coerceIn(0.35f, 1f) + 0.25f, r.centerX(), r.centerY())
+            c.drawCircle(r.centerX(), r.centerY(), rad, glow)
+            c.restore()
+        }
     }
 
-    private fun drawGlows(c: Canvas, v: View, w: Float, h: Float) {
+    /** Finds every lit part currently on screen, in this view's coordinates. */
+    private fun collect(v: View, h: Float) {
         if (v.visibility != VISIBLE) return
         if (v is MoodGlow || v is Button) {
             v.getLocationInWindow(there)
@@ -259,21 +301,10 @@ class MoodLightView(ctx: Context, private val content: View) : View(ctx) {
             if (oy < h && oy + v.height > 0) {
                 val glows = if (v is MoodGlow) v.glows()
                     else listOf(Glow(RectF(0f, 0f, v.width.toFloat(), v.height.toFloat()), Mood.AMBER, 0.45f))
-                for (g in glows) {
-                    gr.set(g.rect); gr.offset(ox, oy)
-                    val rad = maxOf(gr.width(), gr.height()) * 0.75f + 10 * d
-                    val a = (110 * g.strength * fade).toInt().coerceIn(0, 255)
-                    glow.shader = RadialGradient(gr.centerX(), gr.centerY(), rad,
-                        intArrayOf(Color.argb(a, Color.red(g.colour), Color.green(g.colour), Color.blue(g.colour)),
-                            Color.argb(a / 3, Color.red(g.colour), Color.green(g.colour), Color.blue(g.colour)),
-                            Color.argb(0, Color.red(g.colour), Color.green(g.colour), Color.blue(g.colour))),
-                        floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
-                    c.save(); c.scale(1f, (gr.height() / gr.width()).coerceIn(0.35f, 1f) + 0.25f, gr.centerX(), gr.centerY())
-                    c.drawCircle(gr.centerX(), gr.centerY(), rad, glow)
-                    c.restore()
-                }
+                for (g in glows) lit += Lit(RectF(g.rect).apply { offset(ox, oy) }, g)
             }
         }
-        if (v is ViewGroup) for (i in 0 until v.childCount) drawGlows(c, v.getChildAt(i), w, h)
+        if (v is ViewGroup) for (i in 0 until v.childCount) collect(v.getChildAt(i), h)
     }
+
 }
