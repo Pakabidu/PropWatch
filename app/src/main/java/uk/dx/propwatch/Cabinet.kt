@@ -375,6 +375,69 @@ class TonePlateView(ctx: Context) : CabinetView(ctx), MoodGlow {
 }
 
 /**
+ * The backlit screen of the broadcast set's dial, shared by every lit screen on the set:
+ * a black face behind old glass, lit warm amber by bulbs behind it, in a worn chrome
+ * bezel. [g] is how far the lamps are up (0 cold, 1 full).
+ */
+object Screen {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    val PALE_GOLD = Color.rgb(0xFF, 0xE0, 0xA0)
+    val PALE_CREAM = Color.rgb(0xFF, 0xEE, 0xCC)
+
+    fun bezel(c: Canvas, outer: RectF, radius: Float, seed: Int, d: Float) {
+        p.shader = LinearGradient(outer.left, outer.top, outer.right, outer.bottom,
+            intArrayOf(Color.rgb(0xF0, 0xF0, 0xEC), Radio.CHROME_DARK, Color.rgb(0xDA, 0xDA, 0xD4), Color.rgb(0x50, 0x50, 0x4C)),
+            null, Shader.TileMode.CLAMP)
+        c.drawRoundRect(outer, radius, radius, p)
+        p.shader = null
+        // Chrome worn through to brass where hands have gripped it.
+        c.save(); c.clipRect(outer)
+        Wear.chips(c, outer, seed, 14, d, Color.argb(170, 0xB8, 0x8A, 0x40))
+        Wear.scratches(c, outer, seed + 1, 10, d, alpha = 60)
+        c.restore()
+    }
+
+    /** The lit face: call inside a clip to the screen. Bulbs sit at [lampsX] × [lampY]. */
+    fun face(c: Canvas, r: RectF, g: Float, lampsX: FloatArray, lampY: Float, reach: Float) {
+        p.shader = RadialGradient(r.centerX(), lampY, reach,
+            intArrayOf(Radio.mix(Color.rgb(0x1A, 0x14, 0x0E), Color.rgb(0xB0, 0x78, 0x30), g),
+                Radio.mix(Color.rgb(0x10, 0x0D, 0x0A), Color.rgb(0x5A, 0x38, 0x14), g),
+                Radio.mix(Color.rgb(0x08, 0x08, 0x08), Color.rgb(0x22, 0x14, 0x08), g)),
+            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        c.drawRect(r, p)
+        val a = ((if (Mood.on) 165 else 145) * g).toInt()
+        for (x in lampsX) {
+            p.shader = RadialGradient(x, lampY, reach * 0.65f, Color.argb(a, 0xFF, 0xD8, 0x90),
+                Color.argb(0, 0xFF, 0xC0, 0x60), Shader.TileMode.CLAMP)
+            c.drawRect(r, p)
+        }
+        p.shader = null
+    }
+
+    /** Gold scales brightening with the lamp, to a pale lit gold at full. */
+    fun gold(g: Float) = if (g < 0.6f) Radio.mix(Color.rgb(0x6A, 0x54, 0x30), Radio.GOLD, g / 0.6f)
+        else Radio.mix(Radio.GOLD, PALE_GOLD, (g - 0.6f) / 0.4f)
+
+    fun cream(g: Float) = if (g < 0.6f) Radio.mix(Color.rgb(0x6A, 0x5C, 0x44), Radio.CREAM, g / 0.6f)
+        else Radio.mix(Radio.CREAM, PALE_CREAM, (g - 0.6f) / 0.4f)
+
+    /** Old glass over the face (still inside the clip): yellowed, glare, grime, dust, scratches. */
+    fun glass(c: Canvas, r: RectF, seed: Int, d: Float, dust: Int = 140) {
+        p.color = Color.argb(20, 0xD8, 0xB0, 0x50); c.drawRect(r, p)
+        if (Mood.on) { p.color = Color.argb(34, 0xFF, 0x9A, 0x3C); c.drawRect(r, p) }
+        p.color = Color.WHITE
+        p.shader = LinearGradient(r.left, r.top, r.right, r.bottom,
+            intArrayOf(Color.argb(0x1C, 255, 255, 255), Color.argb(0x08, 255, 255, 255), Color.argb(0, 255, 255, 255), Color.argb(0, 255, 255, 255)),
+            floatArrayOf(0f, 0.3f, 0.31f, 1f), Shader.TileMode.CLAMP)
+        c.drawRect(r, p)
+        p.shader = null
+        Wear.grime(c, r, d, depth = 10f, alpha = 70)
+        Wear.dust(c, r, seed, dust, d, alpha = 65)
+        Wear.scratches(c, r, seed + 1, 3, d, alpha = 40)
+    }
+}
+
+/**
  * The tuning dial: smoky glass in a chrome bezel. Gold shortwave-style arc scales
  * (HF, 6m, 2m, 70cm) above a centre pivot, the condition scale (QUIET, HEADS-UP,
  * OPEN) around the top, and a gold horseshoe scale below with the nameplate script.
@@ -391,8 +454,7 @@ class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private var glow = 1f
 
     private val bezel = paint()
-    private val glass = paint()
-    private val lamp = paint()
+    private val screenClip = Path()
     private val arc = paint { style = Paint.Style.STROKE; strokeWidth = 1.2f * d }
     private val tick = paint { strokeWidth = 1f * d }
     private val num = paint { typeface = Radio.SERIF; textSize = 7.5f * t; textAlign = Paint.Align.CENTER }
@@ -412,7 +474,6 @@ class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private val hub = paint()
     private val hubRing = paint(Radio.GOLD) { style = Paint.Style.STROKE; strokeWidth = 1.4f * d }
     private val hubCap = paint(Color.rgb(0x2A, 0x2A, 0x26))
-    private val glare = paint()
     private val outer = RectF(); private val inner = RectF(); private val oval = RectF()
     private val shoePath = Path()
 
@@ -429,12 +490,7 @@ class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
         bezel.shader = LinearGradient(0f, 0f, w.toFloat(), h.toFloat(),
             intArrayOf(Color.rgb(0xF4, 0xF4, 0xF0), Radio.CHROME_DARK, Color.rgb(0xDC, 0xDC, 0xD6), Color.rgb(0x50, 0x50, 0x4C)),
             null, Shader.TileMode.CLAMP)
-        glass.shader = RadialGradient(inner.centerX(), inner.centerY(), inner.width() * 0.75f,
-            intArrayOf(Color.rgb(0x3E, 0x41, 0x36), Color.rgb(0x22, 0x24, 0x1E), Color.rgb(0x0E, 0x0F, 0x0C)),
-            floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
-        glare.shader = LinearGradient(inner.left, inner.top, inner.right, inner.bottom,
-            intArrayOf(Color.argb(0x1A, 255, 255, 255), Color.argb(0x08, 255, 255, 255), Color.argb(0, 255, 255, 255), Color.argb(0, 255, 255, 255)),
-            floatArrayOf(0f, 0.35f, 0.36f, 1f), Shader.TileMode.CLAMP)
+        screenClip.reset(); screenClip.addRoundRect(inner, 16 * d, 16 * d, Path.Direction.CW)
     }
 
     private fun ang(t: Float) = Math.toRadians((A0 + (A1 - A0) * t).toDouble())
@@ -448,19 +504,17 @@ class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
         Wear.chips(c, outer, 21, 22, d, Color.argb(170, 0xB8, 0x8A, 0x40))
         Wear.scratches(c, outer, 21, 18, d, alpha = 60)
         c.restore()
-        c.drawRoundRect(inner, 16 * d, 16 * d, glass)
         // Two amber dial lamps in the bezel's top corners.
         Hardware.jewel(c, outer.left + 10 * d, outer.top + 10 * d, 3.6f * d, DIAL_LAMP, d)
         Hardware.jewel(c, outer.right - 10 * d, outer.top + 10 * d, 3.6f * d, DIAL_LAMP, d)
         c.save()
-        c.clipRect(inner)
+        c.clipPath(screenClip)
         val s = inner.width(); val px = cx(); val py = cy()
-        lamp.shader = RadialGradient(px, py, s * 0.5f, Color.argb((46 * glow).toInt(), 0xFF, 0xC8, 0x78),
-            Color.argb(0, 0xFF, 0xC8, 0x78), Shader.TileMode.CLAMP)
-        c.drawCircle(px, py, s * 0.5f, lamp)
+        // Backlit like the broadcast set: a bulb behind the pivot lights the black face amber.
+        Screen.face(c, inner, glow, floatArrayOf(px), py, s * 0.85f)
 
-        val gold = Radio.mix(Color.rgb(0x4A, 0x3E, 0x28), Radio.GOLD, glow)
-        val cream = Radio.mix(Color.rgb(0x50, 0x4A, 0x40), Radio.CREAM, glow)
+        val gold = Screen.gold(glow)
+        val cream = Screen.cream(glow)
         arc.color = gold; tick.color = gold; num.color = gold; tag.color = cream; mc.color = cream
         mega.color = gold; script.color = gold; small.color = cream
 
@@ -541,16 +595,8 @@ class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
         c.drawCircle(px, py, 9 * d, hub)
         c.drawCircle(px, py, 6 * d, hubRing)
         c.drawCircle(px, py, 2.5f * d, hubCap)
-        c.restore()
-        c.drawRoundRect(inner, 16 * d, 16 * d, glare)
-        // Old glass: faintly yellowed, dusty, with a couple of long scratches.
-        c.save(); c.clipRect(inner)
-        fill.color = Color.argb(18, 0xD8, 0xB0, 0x50); c.drawRect(inner, fill)
-        if (Mood.on) {   // the dial lamp turned up in the dark: a warm wash over the glass
-            fill.color = Color.argb(40, 0xFF, 0x9A, 0x3C); c.drawRect(inner, fill)
-        }
-        Wear.dust(c, inner, 22, 160, d, alpha = 70)
-        Wear.scratches(c, inner, 23, 3, d, alpha = 45)
+        // Old glass: faintly yellowed, dusty, with a glare and a few scratches.
+        Screen.glass(c, inner, 22, d, dust = 160)
         c.restore()
     }
 
@@ -558,7 +604,6 @@ class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
         Glow(RectF(outer.left + 4 * d, outer.top + 4 * d, outer.left + 16 * d, outer.top + 16 * d), DIAL_LAMP, 0.9f),
         Glow(RectF(outer.right - 16 * d, outer.top + 4 * d, outer.right - 4 * d, outer.top + 16 * d), DIAL_LAMP, 0.9f))
     private val DIAL_LAMP = Color.rgb(0xFF, 0xA8, 0x3A)
-    private val fill = paint()
 
     private fun levelPos(level: Int) = when (level) { 2 -> 0.8f; 1 -> 0.5f; else -> 0.2f }
 
@@ -679,11 +724,6 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
     var entries: List<Store.LogEntry> = emptyList()
         set(v) { field = v; invalidate() }
 
-    private val bezel = paint()
-    private val face = paint()
-    private val bulb = paint()
-    private val glare = paint()
-    private val fill = paint()
     private val outer = RectF()
     private val inner = RectF()
     private val clip = Path()
@@ -716,39 +756,17 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         outer.set(0f, 0f, w.toFloat(), h.toFloat())
         inner.set(rim, rim, w - rim, h - rim)
-        bezel.shader = LinearGradient(0f, 0f, w.toFloat(), h.toFloat(),
-            intArrayOf(Color.rgb(0xF0, 0xF0, 0xEC), Radio.CHROME_DARK, Color.rgb(0xDA, 0xDA, 0xD4), Color.rgb(0x50, 0x50, 0x4C)),
-            null, Shader.TileMode.CLAMP)
-        // Backlit from below, like the broadcast set's dial with its lamp full on.
-        face.shader = RadialGradient(inner.centerX(), inner.bottom, maxOf(inner.width() * 0.75f, inner.height() * 1.3f),
-            intArrayOf(Color.rgb(0xA8, 0x70, 0x2C), Color.rgb(0x58, 0x36, 0x14), Color.rgb(0x1E, 0x12, 0x08)),
-            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         clip.reset(); clip.addRoundRect(inner, 6 * d, 6 * d, Path.Direction.CW)
-        glare.shader = LinearGradient(inner.left, inner.top, inner.right, inner.bottom,
-            intArrayOf(Color.argb(0x1C, 255, 255, 255), Color.argb(0x08, 255, 255, 255), Color.argb(0, 255, 255, 255), Color.argb(0, 255, 255, 255)),
-            floatArrayOf(0f, 0.3f, 0.31f, 1f), Shader.TileMode.CLAMP)
-    }
-
-    private fun drawBulb(c: Canvas, x: Float, y: Float, r: Float, a: Int) {
-        bulb.shader = RadialGradient(x, y, r, Color.argb(a, 0xFF, 0xD8, 0x90), Color.argb(0, 0xFF, 0xC0, 0x60), Shader.TileMode.CLAMP)
-        c.drawRect(inner, bulb)
     }
 
     override fun onDraw(c: Canvas) {
-        c.drawRoundRect(outer, 10 * d, 10 * d, bezel)
-        // Chrome worn through to brass where it's been handled.
-        c.save(); c.clipRect(outer)
-        Wear.chips(c, outer, 31, 14, d, Color.argb(170, 0xB8, 0x8A, 0x40))
-        Wear.scratches(c, outer, 32, 10, d, alpha = 60)
-        c.restore()
+        Screen.bezel(c, outer, 10 * d, 31, d)
 
         c.save()
         c.clipPath(clip)
-        c.drawRect(inner, face)
-        // Two bulbs behind the glass, low down, each throwing a pool of light.
-        val bulbA = if (Mood.on) 150 else 120
-        drawBulb(c, inner.left + inner.width() * 0.25f, inner.bottom, inner.height() * 0.8f, bulbA)
-        drawBulb(c, inner.left + inner.width() * 0.75f, inner.bottom, inner.height() * 0.8f, bulbA)
+        // Two bulbs behind the glass, low down, like the broadcast dial with its lamp full on.
+        Screen.face(c, inner, 1f, floatArrayOf(inner.left + inner.width() * 0.25f, inner.left + inner.width() * 0.75f),
+            inner.bottom, maxOf(inner.width() * 0.75f, inner.height() * 1.3f))
 
         val gx = inner.left + labW; val gw = inner.right - pad - gx
         val gy = inner.top + head; val gh = Bands.ALL.size * rowH
@@ -777,7 +795,7 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
             for ((i, b) in Bands.ALL.withIndex()) {
                 val y = gy + rowH * i + rowH / 2
                 when (e.levels[b.first] ?: 0) {
-                    2 -> lit(c, x, y, 4.2f * d, OPEN_LAMP)
+                    2 -> lit(c, x, y, 4.2f * d, OPEN_LAMP, haloA = 0x48, shine = 0x60)
                     1 -> lit(c, x, y, 3.6f * d, HEADS_LAMP)
                     0 -> c.drawLine(x - 2.5f * d, y, x + 2.5f * d, y, quiet)
                     else -> {
@@ -792,35 +810,64 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
         fitText(c, if (entries.isEmpty()) "HOURS AGO · CHECKS WILL BE LOGGED HERE" else "HOURS AGO", inner.centerX(), k1, key, inner.width() - 8 * d)
         if (entries.isNotEmpty()) fitText(c, "● OPEN   ● HEADS-UP   – QUIET   × NO DATA", inner.centerX(), k1 + key.textSize * 1.4f, key, inner.width() - 8 * d)
 
-        // Old glass: yellowed, a glare across the top corner, dust, a few scratches, grimy edges.
-        fill.color = Color.argb(22, 0xD8, 0xB0, 0x50); c.drawRect(inner, fill)
-        if (Mood.on) { fill.color = Color.argb(36, 0xFF, 0x9A, 0x3C); c.drawRect(inner, fill) }
-        c.drawRect(inner, glare)
-        Wear.grime(c, inner, d, depth = 10f, alpha = 70)
-        Wear.dust(c, inner, 33, 140, d, alpha = 65)
-        Wear.scratches(c, inner, 34, 3, d, alpha = 40)
+        Screen.glass(c, inner, 33, d)
         c.restore()
     }
 
     /** A check mark that glows on the screen: a soft halo and a bright core. */
-    private fun lit(c: Canvas, x: Float, y: Float, r: Float, col: Int) {
-        halo.shader = RadialGradient(x, y, r * 2.4f, Color.argb(0x90, Color.red(col), Color.green(col), Color.blue(col)),
+    private fun lit(c: Canvas, x: Float, y: Float, r: Float, col: Int, haloA: Int = 0x90, shine: Int = 0xB0) {
+        halo.shader = RadialGradient(x, y, r * 2.4f, Color.argb(haloA, Color.red(col), Color.green(col), Color.blue(col)),
             Color.argb(0, Color.red(col), Color.green(col), Color.blue(col)), Shader.TileMode.CLAMP)
         c.drawCircle(x, y, r * 2.4f, halo)
         dot.color = col; c.drawCircle(x, y, r, dot)
-        dot.color = Color.argb(0xB0, 255, 0xF4, 0xD8); c.drawCircle(x - r * 0.25f, y - r * 0.25f, r * 0.4f, dot)
+        dot.color = Color.argb(shine, 255, 0xF4, 0xD8); c.drawCircle(x - r * 0.25f, y - r * 0.25f, r * 0.4f, dot)
     }
 
     private companion object {
-        val PALE_GOLD = Color.rgb(0xFF, 0xE2, 0xA6)
-        val OPEN_LAMP = Color.rgb(0x6C, 0xF0, 0x8A)
+        val PALE_GOLD = Screen.PALE_GOLD
+        val OPEN_LAMP = Color.rgb(0x48, 0xB0, 0x62)
         val HEADS_LAMP = Color.rgb(0xFF, 0xB0, 0x40)
     }
 }
 
 /**
- * The station log in the lid: a cream-on-black world chart with the station pinned
- * on it, and the reading below. Dims and warms up when retuned; a cursor sweeps the
+ * A nameplate lit from behind like the broadcast screen: pale gold lettering on a
+ * backlit amber strip under old glass, in a worn chrome bezel.
+ */
+class LitNameplate(ctx: Context, private val text: String) : CabinetView(ctx), MoodGlow {
+    private val outer = RectF()
+    private val inner = RectF()
+    private val clip = Path()
+    private val ink = paint(Screen.PALE_GOLD) { typeface = Radio.SERIF; textSize = 10 * t; letterSpacing = 0.3f; textAlign = Paint.Align.CENTER }
+    private val rim get() = 5 * d
+
+    override fun glows(): List<Glow> = if (inner.isEmpty) emptyList() else
+        listOf(Glow(RectF(inner), Mood.AMBER, 1f, screen = true, radius = inner.height() / 2))
+
+    override fun onMeasure(w: Int, h: Int) =
+        setMeasuredDimension(MeasureSpec.getSize(w), (2 * rim + 10 * t + 12 * d).toInt())
+
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+        outer.set(0f, 0f, w.toFloat(), h.toFloat())
+        inner.set(rim, rim, w - rim, h - rim)
+        clip.reset(); clip.addRoundRect(inner, inner.height() / 2, inner.height() / 2, Path.Direction.CW)
+    }
+
+    override fun onDraw(c: Canvas) {
+        Screen.bezel(c, outer, outer.height() / 2, 51, d)
+        c.save(); c.clipPath(clip)
+        Screen.face(c, inner, 1f, floatArrayOf(inner.left + inner.width() * 0.3f, inner.left + inner.width() * 0.7f),
+            inner.bottom, inner.width() * 0.55f)
+        fitText(c, text.uppercase(), inner.centerX(), inner.centerY() + ink.textSize * 0.36f, ink, inner.width() - inner.height())
+        Screen.glass(c, inner, 53, d, dust = 40)
+        c.restore()
+    }
+}
+
+/**
+ * The station log in the lid: a world chart with the station pinned on it and the
+ * reading below, behind one backlit amber screen in a worn chrome bezel, lit like the
+ * broadcast set's dial. Dims and warms up when retuned; a cursor sweeps the
  * chart while a fix is coming in.
  */
 class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
@@ -835,7 +882,7 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
 
     private val ribbon = paint(Radio.CREAM)
     private val ribbonText = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 10 * t; letterSpacing = 0.45f; textAlign = Paint.Align.CENTER }
-    private val sea = paint(Color.rgb(0x0B, 0x0A, 0x09))
+    private val sea = paint(Color.argb(0x78, 0x08, 0x06, 0x04))
     private val grid = paint { strokeWidth = 0.6f * d }
     private val land = paint()
     private val coast = paint { style = Paint.Style.STROKE; strokeWidth = 0.7f * d }
@@ -848,13 +895,16 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private val mono = paint { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD); textSize = 12.5f * t; textAlign = Paint.Align.CENTER }
     private val note = paint { typeface = Typeface.MONOSPACE; textSize = 9 * t; letterSpacing = 0.05f; textAlign = Paint.Align.CENTER }
     private val mapRect = RectF()
-    private val crease = paint { strokeWidth = 0.8f * d }
+    private val outer = RectF()
+    private val inner = RectF()
+    private val clip = Path()
 
     private val LOG_GREEN = Color.rgb(0x5A, 0xE0, 0x7A)
 
-    /** The red station pin and the nameplate's green lamp glow in the dark. */
+    /** The screen, the red station pin and the nameplate's green lamp glow in the dark. */
     override fun glows(): List<Glow> {
         val out = ArrayList<Glow>()
+        if (!inner.isEmpty) out += Glow(RectF(inner), Mood.AMBER, 0.8f + 0.4f * glow, screen = true, radius = 6 * d)
         out += Glow(RectF(6 * d, ribbonH / 2 - 6 * d, 18 * d, ribbonH / 2 + 6 * d), LOG_GREEN, 0.8f)
         if (!pinLat.isNaN() && !locating) {
             val x = mapX(pinLon); val y = mapY(pinLat)
@@ -866,14 +916,19 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
 
     private val ribbonH get() = 10 * t + 9 * d
     private val textH get() = 96 * t + 8 * d
+    private val rim get() = 8 * d
+    private fun mapH(width: Int) = (width - 2 * rim - 12 * d) * 0.46f
 
     override fun onMeasure(w: Int, h: Int) {
         val width = MeasureSpec.getSize(w)
-        setMeasuredDimension(width, (ribbonH + width * 0.46f + textH).toInt())
+        setMeasuredDimension(width, (ribbonH + 4 * d + 2 * rim + 6 * d + mapH(width) + textH).toInt())
     }
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
-        mapRect.set(0f, ribbonH + 4 * d, w.toFloat(), ribbonH + 4 * d + w * 0.46f - 4 * d)
+        outer.set(0f, ribbonH + 4 * d, w.toFloat(), h.toFloat())
+        inner.set(outer.left + rim, outer.top + rim, outer.right - rim, outer.bottom - rim)
+        clip.reset(); clip.addRoundRect(inner, 6 * d, 6 * d, Path.Direction.CW)
+        mapRect.set(inner.left + 6 * d, inner.top + 6 * d, inner.right - 6 * d, inner.top + 6 * d + mapH(w))
         shapes.clear()
         for (poly in WorldMap.LAND) {
             val p = Path()
@@ -891,25 +946,31 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
 
     private fun fit(c: Canvas, t: String, y: Float, p: Paint) {
         val size = p.textSize
-        while (p.measureText(t) > width - 16 * d && p.textSize > 9 * d) p.textSize *= 0.93f
+        while (p.measureText(t) > inner.width() - 12 * d && p.textSize > 9 * d) p.textSize *= 0.93f
         c.drawText(t, width / 2f, y, p)
         p.textSize = size
     }
 
     override fun onDraw(c: Canvas) {
         val w = width.toFloat()
-        val cream = Radio.mix(Color.rgb(0x40, 0x3B, 0x33), Radio.CREAM, glow)
         // Title ribbon, like the lid's nameplate band.
         c.drawRoundRect(0f, 0f, w, ribbonH, 2 * d, 2 * d, ribbon)
         c.drawText("STATION LOG", w / 2, ribbonH / 2 + ribbonText.textSize * 0.36f, ribbonText)
         Hardware.jewel(c, 12 * d, ribbonH / 2, 3.4f * d, LOG_GREEN, d)   // a green lamp on the nameplate
 
-        // World chart: cream continents on black.
-        sea.shader = null; sea.color = Color.rgb(0x0B, 0x0A, 0x09)
+        // The screen: lit amber from two bulbs behind the glass, warming up with the reading.
+        Screen.bezel(c, outer, 10 * d, 41, d)
+        c.save(); c.clipPath(clip)
+        Screen.face(c, inner, glow, floatArrayOf(inner.left + inner.width() * 0.25f, inner.left + inner.width() * 0.75f),
+            inner.bottom, maxOf(inner.width() * 0.8f, inner.height() * 1.2f))
+        val gold = Screen.gold(glow)
+        val cream = Screen.cream(glow)
+
+        // World chart printed on the glass: gold continents over a smoked panel.
         c.drawRect(mapRect, sea)
-        grid.color = Radio.mix(Color.rgb(0x1E, 0x1B, 0x17), Color.rgb(0x3A, 0x34, 0x2A), glow)
-        land.color = Radio.mix(Color.rgb(0x3A, 0x35, 0x2C), Color.rgb(0xD8, 0xCB, 0xA6), glow)
-        coast.color = Radio.mix(Color.rgb(0x50, 0x48, 0x3A), Radio.CREAM, glow)
+        grid.color = Color.argb(0x50, Color.red(gold), Color.green(gold), Color.blue(gold))
+        land.color = Color.argb(0x88, Color.red(gold), Color.green(gold), Color.blue(gold))
+        coast.color = gold
         for (lon in -150..150 step 30) c.drawLine(mapX(lon.toDouble()), mapRect.top, mapX(lon.toDouble()), mapRect.bottom, grid)
         for (lat in -30..60 step 30) c.drawLine(mapRect.left, mapY(lat.toDouble()), mapRect.right, mapY(lat.toDouble()), grid)
         c.save(); c.clipRect(mapRect)
@@ -920,19 +981,12 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
             c.drawLine(x, mapRect.top, x, mapRect.bottom, sweepPaint)
         } else if (!pinLat.isNaN()) {
             val x = mapX(pinLon); val y = mapY(pinLat)
-            halo.color = Color.argb((0xC0 * (1 - pulse)).toInt(), 0xE0, 0x3A, 0x2E)
+            halo.color = Color.argb((0xC0 * (1 - pulse)).toInt(), 0xFF, 0x4A, 0x30)
             c.drawCircle(x, y, 4 * d + pulse * 12 * d, halo)
             c.drawCircle(x, y, 3.6f * d, pin)
         }
         c.restore()
-        // A chart that's been folded and unfolded many times: crease lines and grubby edges.
-        c.save(); c.clipRect(mapRect)
-        crease.color = Color.argb(36, 255, 255, 255)
-        for (f in listOf(1f / 3, 2f / 3)) c.drawLine(mapRect.left + mapRect.width() * f, mapRect.top, mapRect.left + mapRect.width() * f, mapRect.bottom, crease)
-        c.drawLine(mapRect.left, mapRect.centerY(), mapRect.right, mapRect.centerY(), crease)
-        Wear.grime(c, mapRect, d, depth = 10f, alpha = 50)
-        c.restore()
-        frame.color = cream
+        frame.color = gold
         c.drawRect(mapRect, frame)
 
         // The reading.
@@ -947,6 +1001,8 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
             fit(c, lines[3], top + 76.5f * t, mono)
             fit(c, lines[4], top + 91 * t, note)
         }
+        Screen.glass(c, inner, 43, d)
+        c.restore()
     }
 
     /** Chart dims, warms up and a cursor sweeps it while the fix comes in. */

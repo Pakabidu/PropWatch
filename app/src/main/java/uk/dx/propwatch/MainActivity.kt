@@ -101,7 +101,10 @@ class MainActivity : Activity() {
         lid.addView(locOnBtn)
         lid.addView(radioButton("Check my location", silent = true) { checkMyLocation() })
 
-        lid.addView(section("PropWatch · DX Log", pill = true))
+        lid.addView(LitNameplate(this, "PropWatch · DX Log").apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(20), 0, dp(8)) }
+        })
         logChart = LogChartView(this)
         lid.addView(logChart)
 
