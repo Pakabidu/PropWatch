@@ -26,6 +26,20 @@ import kotlin.math.sin
 /** Shared bits for the custom-drawn cabinet parts. */
 abstract class CabinetView(ctx: Context) : View(ctx) {
     protected val d = resources.displayMetrics.density
+
+    /**
+     * Text unit: 1.3x the original lettering, growing with the phone's font-size
+     * setting up to 1.5x, so the cabinet stays readable without overflowing.
+     */
+    protected val t = d * (1.3f * resources.configuration.fontScale).coerceIn(1.3f, 1.5f)
+
+    /** Draws text with the paint's alignment, shrinking it until it fits [maxW]. */
+    protected fun fitText(c: Canvas, text: String, x: Float, y: Float, p: Paint, maxW: Float) {
+        val size = p.textSize
+        while (p.measureText(text) > maxW && p.textSize > 8 * d) p.textSize *= 0.94f
+        c.drawText(text, x, y, p)
+        p.textSize = size
+    }
     private val anims = mutableListOf<ValueAnimator>()
 
     protected fun animate(from: Float, to: Float, ms: Long, delay: Long = 0,
@@ -166,8 +180,8 @@ class TonePlateView(ctx: Context) : CabinetView(ctx) {
         set(v) { field = v; invalidate() }
     var onToggle: ((Int, Boolean) -> Unit)? = null
 
-    private val label = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 8.5f * d; letterSpacing = 0.1f; textAlign = Paint.Align.CENTER }
-    private val arrow = paint(Color.rgb(0x33, 0x33, 0x33)) { typeface = Radio.SERIF; textSize = 6 * d; textAlign = Paint.Align.CENTER }
+    private val label = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 8.5f * t; letterSpacing = 0.1f; textAlign = Paint.Align.CENTER }
+    private val arrow = paint(Color.rgb(0x33, 0x33, 0x33)) { typeface = Radio.SERIF; textSize = 6 * t; textAlign = Paint.Align.CENTER }
     private val slotPaint = paint(Color.rgb(0x1A, 0x19, 0x18))
     private val rocker = paint()
     private val lamp = paint(Radio.LAMP_ALERT)
@@ -176,8 +190,8 @@ class TonePlateView(ctx: Context) : CabinetView(ctx) {
     private val pin = paint(Color.rgb(0x6C, 0x6A, 0x64))
     private val r = RectF()
 
-    private val rowH get() = 28 * d
-    private fun rowTop(i: Int) = 17 * d + i * rowH
+    private val rowH get() = 9 * t + 19 * d
+    private fun rowTop(i: Int) = 15 * d + i * rowH
 
     override fun onDraw(c: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
@@ -186,8 +200,8 @@ class TonePlateView(ctx: Context) : CabinetView(ctx) {
         Hardware.screw(c, w / 2, 7 * d, d)
         for ((i, s) in switches.withIndex()) {
             val y = rowTop(i)
-            c.drawText(s.first, w / 2, y + 8 * d, label)
-            val bx = w / 2 - 8 * d; val by = y + 11 * d
+            fitText(c, s.first, w / 2, y + 9 * t, label, w - 8 * d)
+            val bx = w / 2 - 8 * d; val by = y + 9 * t + 4 * d
             r.set(bx - 2 * d, by - 1 * d, bx + 18 * d, by + 10 * d)
             c.drawRoundRect(r, 2 * d, 2 * d, slotPaint)
             val on = s.second
@@ -253,16 +267,16 @@ class DialView(ctx: Context) : CabinetView(ctx) {
     private val lamp = paint()
     private val arc = paint { style = Paint.Style.STROKE; strokeWidth = 1.2f * d }
     private val tick = paint { strokeWidth = 1f * d }
-    private val num = paint { typeface = Radio.SERIF; textSize = 7.5f * d; textAlign = Paint.Align.CENTER }
-    private val tag = paint { typeface = Radio.SERIF; textSize = 7.5f * d; textAlign = Paint.Align.CENTER }
-    private val mc = paint { typeface = Radio.SERIF; textSize = 6 * d; textAlign = Paint.Align.CENTER }
-    private val cond = paint { typeface = Radio.SERIF; textSize = 8.5f * d; letterSpacing = 0.12f; textAlign = Paint.Align.CENTER }
+    private val num = paint { typeface = Radio.SERIF; textSize = 7.5f * t; textAlign = Paint.Align.CENTER }
+    private val tag = paint { typeface = Radio.SERIF; textSize = 7.5f * t; textAlign = Paint.Align.CENTER }
+    private val mc = paint { typeface = Radio.SERIF; textSize = 6 * t; textAlign = Paint.Align.CENTER }
+    private val cond = paint { typeface = Radio.SERIF; textSize = 8.5f * t; letterSpacing = 0.12f; textAlign = Paint.Align.CENTER }
     private val shoe = paint()
-    private val shoeInk = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 7.5f * d; textAlign = Paint.Align.CENTER }
+    private val shoeInk = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 7.5f * t; textAlign = Paint.Align.CENTER }
     private val shoeTick = paint(Radio.INK) { strokeWidth = 0.8f * d }
-    private val mega = paint { typeface = Radio.SERIF; textSize = 6.5f * d; letterSpacing = 0.25f; textAlign = Paint.Align.CENTER }
+    private val mega = paint { typeface = Radio.SERIF; textSize = 6.5f * t; letterSpacing = 0.25f; textAlign = Paint.Align.CENTER }
     private val script = paint { typeface = Radio.SERIF_ITALIC; textAlign = Paint.Align.CENTER }
-    private val small = paint { typeface = Typeface.SERIF; textSize = 5.5f * d; letterSpacing = 0.15f; textAlign = Paint.Align.CENTER }
+    private val small = paint { typeface = Typeface.SERIF; textSize = 5.5f * t; letterSpacing = 0.15f; textAlign = Paint.Align.CENTER }
     private val needlePaint = paint(Color.rgb(0xF4, 0xEC, 0xD8)) {
         strokeWidth = 2f * d; strokeCap = Paint.Cap.ROUND
         setShadowLayer(4 * d, 0f, 1 * d, Color.argb(0x99, 0, 0, 0))
@@ -327,24 +341,32 @@ class DialView(ctx: Context) : CabinetView(ctx) {
             for ((t, v) in marks) {
                 val a = ang(v)
                 c.drawLine(px + rr * cosf(a), py + rr * sinf(a), px + (rr + 5 * d) * cosf(a), py + (rr + 5 * d) * sinf(a), tick)
-                if (t != null) c.drawText(t, px + (rr + 10 * d) * cosf(a), py + (rr + 10 * d) * sinf(a) + 3 * d, num)
+                if (t != null) {
+                    val tr = rr + 4 * d + num.textSize * 0.55f
+                    c.drawText(t, px + tr * cosf(a), py + tr * sinf(a) + num.textSize * 0.36f, num)
+                }
             }
             val a = ang(0f)
-            c.drawText(label, px + (rr + 9 * d) * cosf(a), py + (rr + 9 * d) * sinf(a) + 3 * d, tag)
-            if (unit) { val b = ang(1f); c.drawText("M.C.", px + (rr + 11 * d) * cosf(b), py + (rr + 11 * d) * sinf(b) + 3 * d, mc) }
+            val lr = rr + 4 * d + tag.textSize * 0.6f
+            c.drawText(label, px + lr * cosf(a), py + lr * sinf(a) + tag.textSize * 0.36f, tag)
+            if (unit) {
+                val b = ang(1f); val mr = rr + 5 * d + mc.textSize
+                c.drawText("M.C.", px + mr * cosf(b), py + mr * sinf(b) + mc.textSize * 0.36f, mc)
+            }
         }
         val lo = ln(1.8); val hi = ln(32.0)
-        scale(0.15f, "HF", HF.map { (l, f) -> l to ((ln(f) - lo) / (hi - lo)).toFloat() }, 0, false)
-        scale(0.21f, "6M", (50..54).map { (if (it in 51..53) "$it" else null) to (it - 50) / 4f }, 16, false)
-        scale(0.27f, "2M", (0..4).map { (if (it == 2) "145" else null) to it / 4f }, 20, false)
-        scale(0.33f, "70", (0..2).map { (if (it == 1) "435" else null) to it / 2f }, 10, true)
+        scale(0.13f, "HF", HF.map { (l, f) -> l to ((ln(f) - lo) / (hi - lo)).toFloat() }, 0, false)
+        scale(0.185f, "6M", (50..54).map { (if (it == 51 || it == 53) "$it" else null) to (it - 50) / 4f }, 16, false)
+        scale(0.24f, "2M", (0..4).map { (if (it == 2) "145" else null) to it / 4f }, 20, false)
+        // 70cm numbers sit off-centre so they never stack on 2m's "145".
+        scale(0.295f, "70", listOf(null to 0f, "432" to 0.2f, null to 0.5f, "438" to 0.8f, null to 1f), 10, true)
 
         // Condition scale around the top; the word under the needle lights up.
         val rc = s * 0.405f
         for ((i, name) in listOf("QUIET", "HEADS-UP", "OPEN").withIndex()) {
             val t = levelPos(i); val a = ang(t)
             cond.color = if (kotlin.math.abs(needle - t) < 0.07f) Radio.mix(cream, Radio.LAMP_ALERT, glow * 0.8f) else cream
-            c.drawText(name, px + rc * cosf(a), py + rc * sinf(a) + 3 * d, cond)
+            c.drawText(name, px + rc * cosf(a), py + rc * sinf(a) + cond.textSize * 0.36f, cond)
         }
 
         // Gold horseshoe scale below the pivot.
@@ -365,15 +387,16 @@ class DialView(ctx: Context) : CabinetView(ctx) {
         for ((i, m) in HORSESHOE.withIndex()) {
             val a = b1 - (b1 - b0) * (i + 0.5) / HORSESHOE.size
             val rm = (r1 + r2) / 2
-            c.drawText(m, px + rm * cosf(a), py + rm * sinf(a) + 3 * d, shoeInk)
+            c.drawText(m, px + rm * cosf(a), py + rm * sinf(a) + shoeInk.textSize * 0.36f, shoeInk)
         }
-        c.drawText("MEGACYCLES", px, py + r2 + 9 * d, mega)
-        script.textSize = 11 * d
-        c.drawText("PropWatch", px - s * 0.15f, py + s * 0.15f, script)
-        script.textSize = 10 * d
-        c.drawText("DX Receiver", px + s * 0.15f, py + s * 0.15f, script)
-        c.drawText("HF · VHF · UHF", px - s * 0.15f, py + s * 0.15f + 10 * d, small)
-        c.drawText("PROPAGATION", px + s * 0.15f, py + s * 0.15f + 10 * d, small)
+        c.drawText("MEGACYCLES", px, py + r2 + 3 * d + mega.textSize, mega)
+        // Script nameplates inside the horseshoe, kept clear of its inner edge.
+        script.textSize = 9.5f * t
+        val sy = py + s * 0.14f
+        fitText(c, "PropWatch", px - s * 0.135f, sy, script, s * 0.24f)
+        fitText(c, "DX Receiver", px + s * 0.135f, sy, script, s * 0.24f)
+        fitText(c, "HF · VHF · UHF", px - s * 0.125f, sy + small.textSize * 1.5f, small, s * 0.16f)
+        fitText(c, "PROPAGATION", px + s * 0.125f, sy + small.textSize * 1.5f, small, s * 0.16f)
 
         // Needle (with a short tail) and the pivot.
         val a = ang(needle)
@@ -419,9 +442,9 @@ class BandPlateView(ctx: Context) : CabinetView(ctx) {
         set(v) { field = v; invalidate() }
     var onSelect: ((Int) -> Unit)? = null
 
-    private val head = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 8 * d; letterSpacing = 0.25f; textAlign = Paint.Align.CENTER }
-    private val label = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 9.5f * d; letterSpacing = 0.08f; textAlign = Paint.Align.RIGHT }
-    private val status = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 9.5f * d; letterSpacing = 0.1f; textAlign = Paint.Align.LEFT }
+    private val head = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 8 * t; letterSpacing = 0.25f; textAlign = Paint.Align.CENTER }
+    private val label = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 9.5f * t; letterSpacing = 0.08f; textAlign = Paint.Align.RIGHT }
+    private val status = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 9.5f * t; letterSpacing = 0.1f; textAlign = Paint.Align.LEFT }
     private val rule = paint(Color.rgb(0x2A, 0x28, 0x24)) { strokeWidth = 1.1f * d }
     private val well = paint(Color.argb(0x59, 0, 0, 0))
     private val btn = paint()
@@ -430,8 +453,8 @@ class BandPlateView(ctx: Context) : CabinetView(ctx) {
     private val lampRim = paint(Color.rgb(0x2A, 0x28, 0x24)) { style = Paint.Style.STROKE; strokeWidth = 0.8f * d }
     private val r = RectF()
 
-    private val rowH get() = 30 * d
-    private val top get() = 26 * d
+    private val rowH get() = maxOf(30 * d, 9.5f * t + 20 * d)
+    private val top get() = 8 * t + 16 * d
 
     override fun onMeasure(w: Int, h: Int) =
         setMeasuredDimension(MeasureSpec.getSize(w), (top + rows.size * rowH + 10 * d).toInt())
@@ -440,14 +463,14 @@ class BandPlateView(ctx: Context) : CabinetView(ctx) {
         val w = width.toFloat(); val h = height.toFloat()
         r.set(0f, 0f, w, h)
         Hardware.plate(c, r, 5 * d, d)
-        c.drawText("WAVEBAND", w * 0.30f, 17 * d, head)
-        c.drawText("CONDITIONS NOW", w * 0.80f, 17 * d, head)
-        val bx = w * 0.55f; val lineX = w * 0.66f
+        val bx = w * 0.53f; val lineX = w * 0.64f
+        fitText(c, "WAVEBAND", w * 0.28f, 8 * t + 7 * d, head, w * 0.42f)
+        fitText(c, "CONDITIONS", (lineX + w) / 2, 8 * t + 7 * d, head, w - lineX - 10 * d)
         c.drawLine(lineX, top + 2 * d, lineX, top + rows.size * rowH - 6 * d, rule)
         for ((i, row) in rows.withIndex()) {
             val cy = top + i * rowH + rowH / 2
             val down = i == selected
-            c.drawText(row.label, bx - 12 * d, cy + 3.5f * d, label)
+            fitText(c, row.label, bx - 10 * d, cy + label.textSize * 0.36f, label, bx - 22 * d)
             r.set(bx - 2 * d, cy - 11 * d, bx + 22 * d, cy + 13 * d)
             c.drawRoundRect(r, 3 * d, 3 * d, well)
             r.set(bx, cy - 10 * d, bx + 20 * d, cy + 10 * d)
@@ -463,7 +486,7 @@ class BandPlateView(ctx: Context) : CabinetView(ctx) {
                 c.drawCircle(lineX + 13 * d, cy, 3 * d, lampPaint)
                 c.drawCircle(lineX + 13 * d, cy, 3 * d, lampRim)
             }
-            c.drawText(row.status, lineX + 21 * d, cy + 3.5f * d, status)
+            fitText(c, row.status, lineX + 20 * d, cy + status.textSize * 0.36f, status, w - lineX - 28 * d)
         }
         for ((x, y) in listOf(8 * d to 8 * d, w - 8 * d to 8 * d, 8 * d to h - 8 * d, w - 8 * d to h - 8 * d)) Hardware.screw(c, x, y, d)
     }
@@ -496,9 +519,9 @@ class LogChartView(ctx: Context) : CabinetView(ctx) {
     private val speck = paint()
     private val fine = paint(Color.argb(0x73, 0xA0, 0x82, 0x50)) { strokeWidth = 0.5f * d }
     private val bold = paint(Color.argb(0xCC, 0x5A, 0x46, 0x28)) { strokeWidth = 0.9f * d }
-    private val scaleText = paint(Radio.CREAM) { typeface = Radio.SERIF; textSize = 7 * d; textAlign = Paint.Align.CENTER }
-    private val rowText = paint(Radio.CREAM) { typeface = Radio.SERIF; textSize = 9 * d; letterSpacing = 0.1f; textAlign = Paint.Align.CENTER }
-    private val key = paint(Radio.CREAM) { typeface = Typeface.SERIF; textSize = 6.5f * d; letterSpacing = 0.08f; textAlign = Paint.Align.CENTER }
+    private val scaleText = paint(Radio.CREAM) { typeface = Radio.SERIF; textSize = 7 * t; textAlign = Paint.Align.CENTER }
+    private val rowText = paint(Radio.CREAM) { typeface = Radio.SERIF; textSize = 9 * t; letterSpacing = 0.1f; textAlign = Paint.Align.CENTER }
+    private val key = paint(Radio.CREAM) { typeface = Typeface.SERIF; textSize = 7 * t; letterSpacing = 0.08f; textAlign = Paint.Align.CENTER }
     private val diamond = paint(Radio.CREAM)
     private val open = paint(Color.rgb(0x2E, 0x8B, 0x57))
     private val openRim = paint(Color.rgb(0x11, 0x22, 0x33)) { style = Paint.Style.STROKE; strokeWidth = 0.8f * d }
@@ -508,14 +531,18 @@ class LogChartView(ctx: Context) : CabinetView(ctx) {
     private val dpath = Path()
     private val specks = ArrayList<FloatArray>()
 
-    private val head get() = 18 * d
-    private val labW get() = 34 * d
-    private val rowH get() = 22 * d
+    private val head get() = 7 * t + 10 * d
+    private val labW get() = 26 * t
+    private val rowH get() = maxOf(22 * d, 14 * t)
+    private val keyH get() = 7 * t * 2.6f + 6 * d
 
     override fun onMeasure(w: Int, h: Int) =
-        setMeasuredDimension(MeasureSpec.getSize(w), (head + Bands.ALL.size * rowH + 16 * d).toInt())
+        setMeasuredDimension(MeasureSpec.getSize(w), (head + Bands.ALL.size * rowH + keyH).toInt())
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+        // On the receiver the chart is backlit amber, like its dials.
+        paper.shader = if (Radio.receiver) RadialGradient(w / 2f, h * 0.9f, w * 0.8f,
+            intArrayOf(Radio.AMBER_LIGHT, Radio.AMBER, Radio.AMBER_DARK), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP) else null
         val r = kotlin.random.Random(11)
         specks.clear()
         repeat((w * h / (30 * d * d)).toInt().coerceAtMost(900)) {
@@ -538,13 +565,15 @@ class LogChartView(ctx: Context) : CabinetView(ctx) {
         for (k in 0..Bands.ALL.size) c.drawLine(gx, gy + rowH * k, gx + gw, gy + rowH * k, bold)
         for (k in 0..24) {
             val x = gx + gw * k / 24
-            if (k % 4 == 0) c.drawText(if (k == 24) "NOW" else "${k - 24}", x, 12 * d, scaleText)
+            val base = head - 6 * d
+            if (k % 4 == 0) c.drawText(if (k == 24) "NOW" else "${k - 24}", x, base, scaleText)
             else if (k % 2 == 0) {
-                dpath.reset(); dpath.moveTo(x, 6 * d); dpath.lineTo(x + 2 * d, 8.5f * d); dpath.lineTo(x, 11 * d); dpath.lineTo(x - 2 * d, 8.5f * d); dpath.close()
+                val m = base - scaleText.textSize * 0.36f
+                dpath.reset(); dpath.moveTo(x, m - 2.5f * d); dpath.lineTo(x + 2 * d, m); dpath.lineTo(x, m + 2.5f * d); dpath.lineTo(x - 2 * d, m); dpath.close()
                 c.drawPath(dpath, diamond)
             }
         }
-        for ((i, b) in Bands.ALL.withIndex()) c.drawText(b.second, labW / 2, gy + rowH * i + rowH / 2 + 3.5f * d, rowText)
+        for ((i, b) in Bands.ALL.withIndex()) c.drawText(b.second, labW / 2, gy + rowH * i + rowH / 2 + rowText.textSize * 0.36f, rowText)
 
         val now = System.currentTimeMillis()
         for (e in entries) {
@@ -564,8 +593,10 @@ class LogChartView(ctx: Context) : CabinetView(ctx) {
                 }
             }
         }
-        c.drawText(if (entries.isEmpty()) "HOURS AGO · CHECKS WILL BE LOGGED HERE"
-            else "HOURS AGO · ● OPEN  ● HEADS-UP  – QUIET  × NO DATA", w / 2, h - 4 * d, key)
+        // Key, on two lines so it stays large.
+        val k1 = gy + gh + 3 * d + key.textSize
+        fitText(c, if (entries.isEmpty()) "HOURS AGO · CHECKS WILL BE LOGGED HERE" else "HOURS AGO", w / 2, k1, key, w - 8 * d)
+        if (entries.isNotEmpty()) fitText(c, "● OPEN   ● HEADS-UP   – QUIET   × NO DATA", w / 2, k1 + key.textSize * 1.4f, key, w - 8 * d)
     }
 }
 
@@ -585,7 +616,7 @@ class StationLogView(ctx: Context) : CabinetView(ctx) {
     private var pinLon = Double.NaN
 
     private val ribbon = paint(Radio.CREAM)
-    private val ribbonText = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 10 * d; letterSpacing = 0.45f; textAlign = Paint.Align.CENTER }
+    private val ribbonText = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 10 * t; letterSpacing = 0.45f; textAlign = Paint.Align.CENTER }
     private val sea = paint(Color.rgb(0x0B, 0x0A, 0x09))
     private val grid = paint { strokeWidth = 0.6f * d }
     private val land = paint()
@@ -594,15 +625,15 @@ class StationLogView(ctx: Context) : CabinetView(ctx) {
     private val pin = paint(Color.rgb(0xE0, 0x3A, 0x2E))
     private val halo = paint { style = Paint.Style.STROKE; strokeWidth = 1.5f * d }
     private val sweepPaint = paint(Radio.LAMP_ALERT) { strokeWidth = 1.6f * d }
-    private val big = paint { typeface = Radio.SERIF; textSize = 20 * d; letterSpacing = 0.05f; textAlign = Paint.Align.CENTER }
-    private val mid = paint { typeface = Radio.SERIF; textSize = 12.5f * d; letterSpacing = 0.25f; textAlign = Paint.Align.CENTER }
-    private val mono = paint { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD); textSize = 12.5f * d; textAlign = Paint.Align.CENTER }
-    private val note = paint { typeface = Typeface.MONOSPACE; textSize = 9 * d; letterSpacing = 0.05f; textAlign = Paint.Align.CENTER }
+    private val big = paint { typeface = Radio.SERIF; textSize = 20 * t; letterSpacing = 0.05f; textAlign = Paint.Align.CENTER }
+    private val mid = paint { typeface = Radio.SERIF; textSize = 12.5f * t; letterSpacing = 0.25f; textAlign = Paint.Align.CENTER }
+    private val mono = paint { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD); textSize = 12.5f * t; textAlign = Paint.Align.CENTER }
+    private val note = paint { typeface = Typeface.MONOSPACE; textSize = 9 * t; letterSpacing = 0.05f; textAlign = Paint.Align.CENTER }
     private val mapRect = RectF()
     private val shapes = ArrayList<Path>()
 
-    private val ribbonH get() = 22 * d
-    private val textH get() = 112 * d
+    private val ribbonH get() = 10 * t + 9 * d
+    private val textH get() = 96 * t + 8 * d
 
     override fun onMeasure(w: Int, h: Int) {
         val width = MeasureSpec.getSize(w)
@@ -628,7 +659,7 @@ class StationLogView(ctx: Context) : CabinetView(ctx) {
 
     private fun fit(c: Canvas, t: String, y: Float, p: Paint) {
         val size = p.textSize
-        while (p.measureText(t) > width - 16 * d && p.textSize > 7 * d) p.textSize *= 0.93f
+        while (p.measureText(t) > width - 16 * d && p.textSize > 9 * d) p.textSize *= 0.93f
         c.drawText(t, width / 2f, y, p)
         p.textSize = size
     }
@@ -638,15 +669,27 @@ class StationLogView(ctx: Context) : CabinetView(ctx) {
         val cream = Radio.mix(Color.rgb(0x40, 0x3B, 0x33), Radio.CREAM, glow)
         // Title ribbon, like the lid's nameplate band.
         c.drawRoundRect(0f, 0f, w, ribbonH, 2 * d, 2 * d, ribbon)
-        c.drawText("STATION LOG", w / 2, ribbonH * 0.68f, ribbonText)
+        c.drawText("STATION LOG", w / 2, ribbonH / 2 + ribbonText.textSize * 0.36f, ribbonText)
 
-        // World chart.
-        c.drawRect(mapRect, sea)
-        grid.color = Radio.mix(Color.rgb(0x1E, 0x1B, 0x17), Color.rgb(0x3A, 0x34, 0x2A), glow)
+        // World chart: cream continents on black (portable), or dark continents on a
+        // backlit amber chart (receiver).
+        if (Radio.receiver) {
+            sea.shader = RadialGradient(mapRect.centerX(), mapRect.bottom, mapRect.width() * 0.75f,
+                intArrayOf(Radio.mix(Color.rgb(0x50, 0x38, 0x18), Radio.AMBER_LIGHT, glow), Radio.mix(Color.rgb(0x3A, 0x26, 0x10), Radio.AMBER, glow),
+                    Radio.mix(Color.rgb(0x20, 0x14, 0x08), Radio.AMBER_DARK, glow)), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
+            c.drawRect(mapRect, sea)
+            grid.color = Color.argb(0x60, 0x2A, 0x16, 0x06)
+            land.color = Color.argb(0xD0, 0x3A, 0x22, 0x0C)
+            coast.color = Radio.DIAL_INK
+        } else {
+            sea.shader = null
+            c.drawRect(mapRect, sea)
+            grid.color = Radio.mix(Color.rgb(0x1E, 0x1B, 0x17), Color.rgb(0x3A, 0x34, 0x2A), glow)
+            land.color = Radio.mix(Color.rgb(0x3A, 0x35, 0x2C), Color.rgb(0xD8, 0xCB, 0xA6), glow)
+            coast.color = Radio.mix(Color.rgb(0x50, 0x48, 0x3A), Radio.CREAM, glow)
+        }
         for (lon in -150..150 step 30) c.drawLine(mapX(lon.toDouble()), mapRect.top, mapX(lon.toDouble()), mapRect.bottom, grid)
         for (lat in -30..60 step 30) c.drawLine(mapRect.left, mapY(lat.toDouble()), mapRect.right, mapY(lat.toDouble()), grid)
-        land.color = Radio.mix(Color.rgb(0x3A, 0x35, 0x2C), Color.rgb(0xD8, 0xCB, 0xA6), glow)
-        coast.color = Radio.mix(Color.rgb(0x50, 0x48, 0x3A), Radio.CREAM, glow)
         c.save(); c.clipRect(mapRect)
         for (p in shapes) { c.drawPath(p, land); c.drawPath(p, coast) }
         if (locating) {
@@ -669,11 +712,11 @@ class StationLogView(ctx: Context) : CabinetView(ctx) {
         if (locating || lines.isEmpty()) {
             fit(c, message, top + textH * 0.42f, mid)
         } else {
-            fit(c, lines[0], top + 24 * d, big)
-            fit(c, lines[1], top + 42 * d, mid)
-            fit(c, lines[2], top + 64 * d, mono)
-            fit(c, lines[3], top + 82 * d, mono)
-            fit(c, lines[4], top + 100 * d, note)
+            fit(c, lines[0], top + 20 * t, big)
+            fit(c, lines[1], top + 37.5f * t, mid)
+            fit(c, lines[2], top + 59 * t, mono)
+            fit(c, lines[3], top + 76.5f * t, mono)
+            fit(c, lines[4], top + 91 * t, note)
         }
     }
 

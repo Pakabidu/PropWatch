@@ -2,9 +2,27 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v5.4
+
+- **Checks on every start.** Opening the app runs a fresh propagation check straight away, quietly.
+- **Sound moved to Check now.** The valve warm-up sound no longer plays when the app opens. It plays when you press **Check now** (or the receiver's vernier knob), as the set tunes in.
+
+## What's new in v5.3
+
+- **Second cabinet: Communications receiver.** Settings → Cabinet switches between the 1940s portable and a 1940s communications receiver, modelled closely on the classic ham-shack receivers (original artwork; no maker's names or logos):
+  - A grey crackle speaker cabinet with chrome louvres on top; a black crackle front panel with chrome art-deco ribs on the sides.
+  - An amber backlit main dial with stacked HF, 6m, 2m and 70cm scales and a condition scale, read by a hairline pointer. An **S-meter** reads S3 when quiet, S7 for a heads-up and S9+ when a band is open; a **Kp meter** shows the latest planetary K index from NOAA.
+  - Red-chevron nameplate. The gold-ringed vernier knob is **Check now** (its ring turns while checking); the rotary **waveband switch** picks the band, with a pilot lamp by each band that's open or worth a look; the toggles are **SOUND**, **MONITOR** and **GPS**. TONE, SELECTIVITY and BAND SPREAD are for show.
+  - Below the panel, the log chart and station-log map are backlit amber and the lettering is white, with red-chevron headings.
+
+## What's new in v5.2
+
+- **Bigger lettering everywhere.** Text on the dial, plates, log chart and station log is about 30% larger, and now also follows the phone's font-size setting (up to 1.5x), with the layout growing to fit. Readings, sources, settings and buttons use larger, higher-contrast type too.
+- Every donation amount has its own thank-you line.
+
 ## What's new in v5.1
 
-- **Support PropWatch** in the lid: a cheeky ask to stand the operator a £1 coffee. Tap it to choose any amount from £1 to £10 on a slider (each step gets its own thank-you line), then **Donate with PayPal** opens PayPal's donation page in the browser with the amount and GBP filled in. Donations go to the PayPal account set in `Donate.kt`. Entirely optional: nothing in the app is locked behind it.
+- **Support PropWatch** in the lid: a cheeky ask to stand the operator a £1 coffee. Tap it to choose any amount from £1 to £10 on a slider (each of the ten amounts has its own thank-you line), then **Donate with PayPal** opens PayPal's donation page in the browser with the amount and GBP filled in. Donations go to the PayPal account set in `Donate.kt`. Entirely optional: nothing in the app is locked behind it.
 
 ## What's new in v5.0
 
@@ -51,7 +69,7 @@ A new look inspired by 1940s portable shortwave sets (original artwork; no maker
 ## What's new in v2
 
 - 1940s portable-receiver look: black leatherette case, chrome louvre grille, brass trim, and a backlit cream slide-rule dial (2m and 70cm scales) whose red needle points to QUIET, HEADS-UP or OPEN. On startup the dial lamp warms up and the needle tunes in, in time with the startup sound. Findings show as pilot lamps (green = alert, amber = heads-up, red = couldn't check).
-- WW2-era radio sounds: bakelite toggle snap on main buttons, rotary detent on link buttons, and a valve-set warm-up (hum, tuning sweep, CW "PW") on startup. All sounds are original, synthesised for PropWatch.
+- WW2-era radio sounds: bakelite toggle snap on main buttons, rotary detent on link buttons, and a valve-set warm-up (hum, tuning sweep, CW "PW") when you press Check now (from v5.4; it used to play on startup). All sounds are original, synthesised for PropWatch.
 - "Radio switch sounds" on/off switch in Settings (takes effect instantly).
 
 ## What it checks

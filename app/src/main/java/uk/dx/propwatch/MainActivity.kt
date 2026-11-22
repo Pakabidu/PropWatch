@@ -30,9 +30,11 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var results: LinearLayout
     private lateinit var checkBtn: Button
-    private lateinit var dial: DialView
-    private lateinit var bandPlate: BandPlateView
-    private lateinit var tonePlate: TonePlateView
+    // Front panel parts: the portable cabinet uses the first three, the receiver the last.
+    private var dial: DialView? = null
+    private var bandPlate: BandPlateView? = null
+    private var tonePlate: TonePlateView? = null
+    private var receiver: ReceiverPanelView? = null
     private lateinit var logChart: LogChartView
     private lateinit var updateBtn: Button
     private lateinit var latField: EditText
@@ -56,59 +58,14 @@ class MainActivity : Activity() {
         if (ask.isNotEmpty() && savedInstanceState == null) requestPermissions(ask.toTypedArray(), REQ_STARTUP)
         PropWorker.schedule(this)
         Sfx.init(this)
+        Radio.skin = Store.skin(this)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(32))
         }
 
-        // Carrying handle, then the case front: grille and tone plate, dial, band plate, readout, main button.
-        root.addView(HandleView(this))
-        val front = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(14), dp(12), dp(14))
-            background = GradientDrawable().apply {
-                setColor(Color.argb(0x40, 0, 0, 0)); cornerRadius = dp(16).toFloat(); setStroke(dp(3), Color.rgb(0x05, 0x04, 0x04))
-            }
-        }
-        val upper = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(170))
-        }
-        upper.addView(GrilleView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.6f)
-        })
-        tonePlate = TonePlateView(this).apply {
-            switches = toneSwitches()
-            onToggle = { i, on -> toggle(i, on) }
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply { leftMargin = dp(10) }
-        }
-        upper.addView(tonePlate)
-        front.addView(upper)
-        dial = DialView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
-        }
-        front.addView(dial)
-        bandPlate = BandPlateView(this).apply {
-            selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
-            onSelect = { i ->
-                Sfx.click(this@MainActivity)
-                Store.saveBand(this@MainActivity, BAND_KEYS[i])
-                render(Store.loadReport(this@MainActivity), animateNeedle = true)
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
-        }
-        front.addView(bandPlate)
-        status = TextView(this).apply {
-            textSize = 12f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.85f
-            gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(10))
-        }
-        front.addView(status)
-        checkBtn = radioButton("Check now") { checkNow() }
-        front.addView(checkBtn)
-        root.addView(front)
+        if (Radio.receiver) buildReceiverFront(root) else buildPortableFront(root)
 
         // The open lid: log chart, readings, sources and settings on a black instruction panel.
         val lid = LinearLayout(this).apply {
@@ -139,6 +96,15 @@ class MainActivity : Activity() {
         )))
 
         lid.addView(section("Settings"))
+        lid.addView(label("Cabinet"))
+        for ((skin, name) in listOf(Radio.Skin.PORTABLE to "1940s portable", Radio.Skin.RECEIVER to "Communications receiver")) {
+            lid.addView(radioButton((if (Radio.skin == skin) "● " else "○ ") + name) {
+                if (Radio.skin != skin) {
+                    Store.saveSkin(this, skin)
+                    recreate()   // rebuild the whole screen in the new cabinet
+                }
+            })
+        }
         val st = Store.station(this)
         val lat = number("Latitude", "%.4f".format(java.util.Locale.US, st.lat)).also { latField = it }
         val lon = number("Longitude", "%.4f".format(java.util.Locale.US, st.lon)).also { lonField = it }
@@ -158,7 +124,7 @@ class MainActivity : Activity() {
         lid.addView(label("Longitude")); lid.addView(lon)
         lid.addView(label("Check every (hours, 1–12)")); lid.addView(interval)
         lid.addView(TextView(this).apply {
-            textSize = 11f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.7f; setPadding(0, dp(10), 0, dp(2))
+            textSize = 14f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.9f; setPadding(0, dp(10), 0, dp(2))
             text = "Front-panel rockers: SOUND switch sounds · MONITOR background checks · GPS phone location. " +
                 "They take effect at once."
         })
@@ -187,14 +153,14 @@ class MainActivity : Activity() {
         updateBtn = radioButton("Check for updates") { checkForUpdate() }
         lid.addView(updateBtn)
         lid.addView(TextView(this).apply {
-            textSize = 11f; typeface = Radio.MONO; setTextColor(Radio.BRASS); gravity = Gravity.CENTER
+            textSize = 13f; typeface = Radio.MONO; setTextColor(Radio.BRASS); gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, 0)
             text = "PROPWATCH ${Updater.currentName(this@MainActivity)} · BUILD ${Updater.currentBuild(this@MainActivity)}"
         })
         lid.addView(section("Support PropWatch"))
         lid.addView(donatePanel())
         lid.addView(TextView(this).apply {
-            textSize = 12f; setTextColor(Radio.CREAM); alpha = 0.55f; setPadding(0, dp(16), 0, 0)
+            textSize = 15f; setTextColor(Radio.CREAM); alpha = 0.8f; setPadding(0, dp(16), 0, 0)
             text = "Alerts only fire when a threshold is met: tropo ducting forecast along the North Sea paths " +
                 "or a live cluster of ≥700 km spots, Kp ≥ 6- (or a G2 watch), 2m or 6m Es in progress, 6m " +
                 "long-haul DX, or a major meteor shower peak or 10m/12m opening (heads-ups). HF conditions for " +
@@ -202,7 +168,7 @@ class MainActivity : Activity() {
         })
 
         setContentView(ScrollView(this).apply {
-            background = Radio.leatherette(this@MainActivity)
+            background = Radio.background(this@MainActivity)
             isFillViewport = true
             addView(root)
         })
@@ -214,24 +180,123 @@ class MainActivity : Activity() {
         val report = Store.loadReport(this)
         render(report, animateNeedle = false)
         if (savedInstanceState == null) {
-            Sfx.startup(this)
-            dial.warmUp(level(report))
+            // Silent warm-up of the dial lamps, then a fresh check every time the app opens.
+            dial?.warmUp(level(report))
+            receiver?.warmUp(Bands.level(report?.findings.orEmpty(), Store.band(this)), kp(report))
+            checkNow(fromUser = false)
         }
+    }
+
+    /** The 1940s portable: handle, grille and tone plate, dial, waveband plate, readout, main button. */
+    private fun buildPortableFront(root: LinearLayout) {
+        // Carrying handle, then the case front: grille and tone plate, dial, band plate, readout, main button.
+        root.addView(HandleView(this))
+        val front = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(14), dp(12), dp(14))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(0x40, 0, 0, 0)); cornerRadius = dp(16).toFloat(); setStroke(dp(3), Color.rgb(0x05, 0x04, 0x04))
+            }
+        }
+        val upper = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200))
+        }
+        upper.addView(GrilleView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.6f)
+        })
+        val tonePlateView = TonePlateView(this).apply {
+            switches = toneSwitches()
+            onToggle = { i, on -> toggle(i, on) }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply { leftMargin = dp(10) }
+        }
+        tonePlate = tonePlateView
+        upper.addView(tonePlateView)
+        front.addView(upper)
+        val dialView = DialView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
+        }
+        dial = dialView
+        front.addView(dialView)
+        val bandPlateView = BandPlateView(this).apply {
+            selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
+            onSelect = { i ->
+                Sfx.click(this@MainActivity)
+                Store.saveBand(this@MainActivity, BAND_KEYS[i])
+                render(Store.loadReport(this@MainActivity), animateNeedle = true)
+            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
+        }
+        bandPlate = bandPlateView
+        front.addView(bandPlateView)
+        status = TextView(this).apply {
+            textSize = 15f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.95f
+            gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(10))
+        }
+        front.addView(status)
+        checkBtn = radioButton("Check now", silent = true) { checkNow(fromUser = true) }
+        front.addView(checkBtn)
+        root.addView(front)
+    }
+
+    /**
+     * The communications receiver: speaker cabinet on top, then the receiver's crackle
+     * front panel (dials, meters, nameplate, working knobs and toggles), readout and button.
+     */
+    private fun buildReceiverFront(root: LinearLayout) {
+        root.addView(SpeakerCabinetView(this))
+        root.addView(View(this).apply {   // the cabinet's top lip
+            background = Radio.tile(this@MainActivity, Radio.greyCrackle)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(12))
+        })
+        val front = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Radio.tile(this@MainActivity, Radio.blackCrackle)
+            setPadding(0, 0, 0, dp(14))
+        }
+        val panel = ReceiverPanelView(this).apply {
+            bands = BAND_KEYS.map { k -> if (k == "all") "ALL" else Bands.ALL.first { it.first == k }.second }
+            selected = BAND_KEYS.indexOf(Store.band(this@MainActivity)).coerceAtLeast(0)
+            toggles = toneSwitches()
+            onCheck = { checkNow(fromUser = true) }
+            onSelect = { i ->
+                Sfx.detent(this@MainActivity)
+                Store.saveBand(this@MainActivity, BAND_KEYS[i])
+                render(Store.loadReport(this@MainActivity), animateNeedle = true)
+            }
+            onToggle = { i, on -> toggle(i, on) }
+        }
+        receiver = panel
+        front.addView(panel)
+        status = TextView(this).apply {
+            textSize = 15f; typeface = Radio.MONO; setTextColor(Radio.CREAM)
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(4), dp(12), dp(10))
+        }
+        front.addView(status)
+        checkBtn = radioButton("Check now", silent = true) { checkNow(fromUser = true) }.apply {
+            (layoutParams as LinearLayout.LayoutParams).setMargins(dp(14), dp(4), dp(14), dp(4))
+        }
+        front.addView(checkBtn)
+        root.addView(front)
     }
 
     // ---- Styled widgets ----
 
-    private fun radioButton(t: String, onClick: () -> Unit) = Button(this).apply {
+    /** Bakelite push-button. [silent] skips the switch click, for buttons with their own sound. */
+    private fun radioButton(t: String, silent: Boolean = false, onClick: () -> Unit) = Button(this).apply {
         text = t
         typeface = Radio.SERIF
         letterSpacing = 0.12f
         setTextColor(Radio.CREAM)
         background = Radio.buttonBg(this@MainActivity)
         stateListAnimator = null
-        minHeight = dp(52)
+        textSize = 17f
+        minHeight = dp(60)
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(6), 0, dp(6)) }
-        setOnClickListener { Sfx.click(this@MainActivity); onClick() }
+        setOnClickListener { if (!silent) Sfx.click(this@MainActivity); onClick() }
     }
 
     /**
@@ -249,16 +314,16 @@ class MainActivity : Activity() {
             setPadding(dp(10), dp(if (header) 4 else 11), dp(10), dp(if (header) 4 else 11))
             if (header) setBackgroundColor(Radio.CREAM)
             addView(TextView(context).apply {
-                text = a; textSize = if (header) 10f else 14f
+                text = a; textSize = if (header) 13f else 17f
                 typeface = if (header) Radio.SERIF else Typeface.SERIF
                 letterSpacing = if (header) 0.3f else 0f
                 setTextColor(if (header) Radio.INK else Radio.CREAM)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(TextView(context).apply {
-                text = b; textSize = 10f; typeface = Radio.SERIF; letterSpacing = 0.15f; gravity = Gravity.END
+                text = b; textSize = 13f; typeface = Radio.SERIF; letterSpacing = 0.1f; gravity = Gravity.END
                 setTextColor(if (header) Radio.INK else Radio.GOLD)
-                layoutParams = LinearLayout.LayoutParams(dp(64), LinearLayout.LayoutParams.WRAP_CONTENT)
+                layoutParams = LinearLayout.LayoutParams(dp(78), LinearLayout.LayoutParams.WRAP_CONTENT)
             })
         }
         return LinearLayout(this).apply {
@@ -289,7 +354,7 @@ class MainActivity : Activity() {
         var pounds = Donate.MIN
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(TextView(this).apply {
-            textSize = 14f; typeface = Typeface.SERIF; setTextColor(Radio.CREAM); setPadding(0, dp(2), 0, dp(4))
+            textSize = 17f; typeface = Typeface.SERIF; setTextColor(Radio.CREAM); setPadding(0, dp(2), 0, dp(4))
             text = "PropWatch is free and always will be. It runs on valves, solder and strong coffee, though. " +
                 "If it's caught you an opening, would you stand the operator a £1 cuppa?"
         })
@@ -302,13 +367,13 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
         }
         val amount = TextView(this).apply {
-            textSize = 34f; typeface = Radio.SERIF; setTextColor(Radio.GOLD); gravity = Gravity.CENTER
+            textSize = 44f; typeface = Radio.SERIF; setTextColor(Radio.GOLD); gravity = Gravity.CENTER
         }
         val cups = TextView(this).apply {
-            textSize = 10f; typeface = Radio.SERIF; letterSpacing = 0.3f; setTextColor(Radio.CREAM); gravity = Gravity.CENTER
+            textSize = 13f; typeface = Radio.SERIF; letterSpacing = 0.25f; setTextColor(Radio.CREAM); gravity = Gravity.CENTER
         }
         val quip = TextView(this).apply {
-            textSize = 13f; typeface = Radio.SERIF_ITALIC; setTextColor(Radio.CREAM); alpha = 0.85f
+            textSize = 17f; typeface = Radio.SERIF_ITALIC; setTextColor(Radio.CREAM); alpha = 0.95f
             gravity = Gravity.CENTER; setPadding(0, dp(6), 0, dp(4)); minLines = 2
         }
         lateinit var pay: Button
@@ -337,11 +402,11 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(8), 0, dp(8), 0)
             addView(TextView(context).apply {
-                text = "£${Donate.MIN}"; textSize = 10f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
+                text = "£${Donate.MIN}"; textSize = 14f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(TextView(context).apply {
-                text = "£${Donate.MAX}"; textSize = 10f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
+                text = "£${Donate.MAX}"; textSize = 14f; typeface = Radio.SERIF; setTextColor(Radio.CREAM)
             })
         }
         pay = radioButton("") {
@@ -350,7 +415,7 @@ class MainActivity : Activity() {
         chooser.addView(amount); chooser.addView(cups); chooser.addView(quip)
         chooser.addView(slider); chooser.addView(ends); chooser.addView(pay)
         chooser.addView(TextView(this).apply {
-            textSize = 10.5f; setTextColor(Radio.CREAM); alpha = 0.6f; gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
+            textSize = 14f; setTextColor(Radio.CREAM); alpha = 0.85f; gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
             text = "Opens PayPal in your browser. Pay by card or PayPal account; nothing is charged in the app."
         })
         show()
@@ -372,25 +437,43 @@ class MainActivity : Activity() {
      * lid's "operating instructions" headers. pill: the rounded nameplate across the top.
      */
     private fun section(t: String, first: Boolean = false, pill: Boolean = false) = TextView(this).apply {
-        text = t.uppercase(); textSize = if (pill) 11f else 10.5f; typeface = Radio.SERIF
-        letterSpacing = if (pill) 0.45f else 0.3f
-        setTextColor(Radio.INK); gravity = Gravity.CENTER
+        textSize = if (pill) 14f else 13.5f
+        letterSpacing = if (pill) 0.3f else 0.22f
+        gravity = Gravity.CENTER
         setPadding(dp(8), dp(if (pill) 5 else 3), dp(8), dp(if (pill) 5 else 3))
-        background = GradientDrawable().apply {
-            setColor(Radio.CREAM); cornerRadius = dp(if (pill) 14 else 1).toFloat()
+        if (Radio.receiver) {
+            // Receiver: white engraved capitals between red chevrons, like its nameplate.
+            val label = "›››  ${t.uppercase()}  ‹‹‹"
+            text = android.text.SpannableString(label).apply {
+                val red = Radio.PANEL_RED
+                setSpan(android.text.style.ForegroundColorSpan(red), 0, 3, 0)
+                setSpan(android.text.style.ForegroundColorSpan(red), label.length - 3, label.length, 0)
+            }
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            setTextColor(Radio.CREAM)
+            background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT); cornerRadius = dp(4).toFloat(); setStroke(dp(1), Color.argb(0x80, 0xEC, 0xE8, 0xDC))
+            }
+        } else {
+            text = t.uppercase(); typeface = Radio.SERIF
+            setTextColor(Radio.INK)
+            background = GradientDrawable().apply {
+                setColor(Radio.CREAM); cornerRadius = dp(if (pill) 14 else 1).toFloat()
+            }
         }
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, if (first) 0 else dp(20), 0, dp(8)) }
     }
 
     private fun label(t: String) = TextView(this).apply {
-        text = t; textSize = 11f; typeface = Radio.MONO; setTextColor(Radio.BRASS); setPadding(0, dp(8), 0, 0)
+        text = t; textSize = 14f; typeface = Radio.MONO; setTextColor(Radio.BRASS); setPadding(0, dp(10), 0, 0)
     }
 
     private fun number(hint: String, value: String, decimal: Boolean = true) = EditText(this).apply {
         this.hint = hint
         setText(value)
         typeface = Radio.MONO
+        textSize = 18f
         setTextColor(Radio.CREAM)
         setHintTextColor(Color.argb(0x80, 0xF1, 0xE6, 0xC8))
         backgroundTintList = ColorStateList.valueOf(Radio.BRASS)
@@ -402,6 +485,11 @@ class MainActivity : Activity() {
 
     /** Needle position for the selected waveband: 0 quiet, 1 heads-up, 2 open. */
     private fun level(r: Report?): Int = Bands.level(r?.findings.orEmpty(), Store.band(this)).coerceAtLeast(0)
+
+    /** Latest planetary K index from the aurora reading ("Kp 3.67 …"), for the receiver's Kp meter. */
+    private fun kp(r: Report?): Float? = r?.findings?.firstOrNull { it.mode == "Aurora" }?.let { f ->
+        Regex("Kp (\\d+(?:\\.\\d+)?)").find(f.headline + " " + f.detail)?.groupValues?.get(1)?.toFloatOrNull()
+    }
 
     /** The readings for the selected waveband button. */
     private fun shown(r: Report?): List<Finding> {
@@ -440,9 +528,16 @@ class MainActivity : Activity() {
         Sfx.click(this)
     }
 
-    private fun checkNow() {
+    /**
+     * Runs every check in the background. [fromUser]: pressed Check now (or the receiver's
+     * vernier knob), so the valve warm-up sound plays; the automatic check at startup is silent.
+     */
+    private fun checkNow(fromUser: Boolean) {
+        if (!checkBtn.isEnabled) return   // a check is already running
+        if (fromUser) Sfx.tuneIn(this)
         checkBtn.isEnabled = false
         checkBtn.text = "Tuning…"
+        receiver?.setChecking(true)
         if (Store.useGps(this)) Locator.lastKnown(this)?.let { useFix(it) }
         val station = Store.station(this)
         Thread {
@@ -452,6 +547,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 checkBtn.isEnabled = true
                 checkBtn.text = "Check now"
+                receiver?.setChecking(false)
                 render(r, animateNeedle = true)
             }
         }.start()
@@ -580,7 +676,6 @@ class MainActivity : Activity() {
         }
         locOnBtn.visibility = View.GONE
         locating = true
-        Sfx.startup(this)
         screen.showLocating()
         Locator.current(this) { l ->
             if (isFinishing) return@current
@@ -638,9 +733,11 @@ class MainActivity : Activity() {
 
     private fun render(r: Report?, animateNeedle: Boolean) {
         results.removeAllViews()
-        bandPlate.rows = bandRows(r)
+        bandPlate?.rows = bandRows(r)
+        receiver?.bandLamps = bandRows(r).map { it.lamp }
         logChart.entries = Store.history(this)
-        if (animateNeedle) dial.setLevel(level(r))
+        if (animateNeedle) dial?.setLevel(level(r))
+        receiver?.show(Bands.level(r?.findings.orEmpty(), Store.band(this)), kp(r), animateNeedle)
         if (r == null) {
             status.text = "NO READINGS YET — PRESS CHECK NOW"
             return
@@ -670,7 +767,7 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(5), 0, dp(5)) }
             // Header band with the mode name.
             addView(TextView(context).apply {
-                text = f.mode.uppercase(); textSize = 9.5f; typeface = Radio.SERIF; letterSpacing = 0.3f
+                text = f.mode.uppercase(); textSize = 12.5f; typeface = Radio.SERIF; letterSpacing = 0.22f
                 gravity = Gravity.CENTER; setTextColor(Radio.INK); setPadding(0, dp(2), 0, dp(2))
                 setBackgroundColor(if (lit) lamp else Radio.CREAM)
             })
@@ -693,10 +790,10 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     addView(TextView(context).apply {
-                        text = f.headline; textSize = 15f; setTextColor(Radio.CREAM); setPadding(0, 0, 0, dp(3))
+                        text = f.headline; textSize = 19f; setTextColor(Radio.CREAM); setPadding(0, 0, 0, dp(4))
                     })
                     if (f.detail.isNotBlank()) addView(TextView(context).apply {
-                        text = f.detail; textSize = 13f; setTextColor(Radio.CREAM); alpha = 0.75f
+                        text = f.detail; textSize = 16f; setTextColor(Radio.CREAM); alpha = 0.88f
                     })
                 })
             })

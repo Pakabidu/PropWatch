@@ -23,15 +23,31 @@ import kotlin.random.Random
  * log chart and operating instructions.
  */
 object Radio {
+    /**
+     * Cabinet styles. PORTABLE: the 1940s portable shortwave set. RECEIVER: a 1940s
+     * communications receiver: black crackle panel, amber backlit dials, chrome trim.
+     * Chosen in Settings; the activity is recreated when it changes.
+     */
+    enum class Skin { PORTABLE, RECEIVER }
+    var skin = Skin.PORTABLE
+    val receiver get() = skin == Skin.RECEIVER
+
     val LEATHER = Color.rgb(0x16, 0x13, 0x11)
-    val PANEL = Color.rgb(0x0E, 0x0D, 0x0C)        // lid instruction panel
-    val GOLD = Color.rgb(0xD9, 0xB5, 0x6A)         // dial scales
-    val BRASS = GOLD
+    val PANEL get() = if (receiver) Color.rgb(0x0C, 0x0D, 0x10) else Color.rgb(0x0E, 0x0D, 0x0C)   // lid panel
+    /** Scale and label accent: gold on the portable, warm amber on the receiver. */
+    val GOLD get() = if (receiver) Color.rgb(0xF2, 0xA8, 0x48) else Color.rgb(0xD9, 0xB5, 0x6A)
+    val BRASS get() = GOLD
+    val AMBER = Color.rgb(0xF0, 0xA0, 0x3A)           // receiver dial backlight
+    val AMBER_LIGHT = Color.rgb(0xFF, 0xD2, 0x7A)
+    val AMBER_DARK = Color.rgb(0xA8, 0x5A, 0x14)
+    val DIAL_INK = Color.rgb(0x2A, 0x16, 0x06)        // printing on the amber dials
+    val PANEL_RED = Color.rgb(0xC8, 0x35, 0x2A)       // receiver nameplate red
     val BRASS_DARK = Color.rgb(0x8A, 0x6A, 0x2E)
     val CHROME = Color.rgb(0xC8, 0xC8, 0xC2)
     val CHROME_DARK = Color.rgb(0x6E, 0x6E, 0x68)
-    val CREAM = Color.rgb(0xF0, 0xE4, 0xC4)
-    val PAPER = Color.rgb(0xE8, 0xDC, 0xB8)        // log-chart graph paper
+    /** Engraved lettering: cream on the portable, white on the receiver's black crackle. */
+    val CREAM get() = if (receiver) Color.rgb(0xEC, 0xE8, 0xDC) else Color.rgb(0xF0, 0xE4, 0xC4)
+    val PAPER get() = if (receiver) AMBER_LIGHT else Color.rgb(0xE8, 0xDC, 0xB8)   // log-chart paper
     val COPPER = Color.rgb(0xB0, 0x7A, 0x4A)       // aged handle brackets and latches
     val COPPER_DARK = Color.rgb(0x5E, 0x3A, 0x20)
     val INK = Color.rgb(0x1A, 0x16, 0x12)
@@ -55,21 +71,44 @@ object Radio {
     fun leatherette(ctx: Context): BitmapDrawable =
         BitmapDrawable(ctx.resources, grain).apply { setTileModeXY(Shader.TileMode.REPEAT, Shader.TileMode.REPEAT) }
 
-    /** Built once per process: a jittered grid of scale centres, nearest-two distances per pixel. */
+    /** Built once per process: alligator scales with worn brown cracks. */
     val grain: Bitmap by lazy {
-        val n = 160
-        val cells = 9
+        cells(160, 9, 7, Color.rgb(0x17, 0x14, 0x12), Color.rgb(0x7A, 0x52, 0x2E), 0.9f, 1.6f, 6, 6f)
+    }
+
+    /** Receiver front panel: black crackle finish with fine light-grey cracks. */
+    val blackCrackle: Bitmap by lazy {
+        cells(144, 15, 21, Color.rgb(0x12, 0x13, 0x17), Color.rgb(0x8C, 0x92, 0x9A), 0.75f, 1.1f, 3, 2f)
+    }
+
+    /** Receiver cabinet and speaker: dark grey wrinkle finish. */
+    val greyCrackle: Bitmap by lazy {
+        cells(128, 18, 33, Color.rgb(0x3A, 0x3C, 0x3D), Color.rgb(0x1E, 0x20, 0x21), 0.6f, 1.2f, 4, 3f)
+    }
+
+    fun tile(ctx: Context, bmp: Bitmap): BitmapDrawable =
+        BitmapDrawable(ctx.resources, bmp).apply { setTileModeXY(Shader.TileMode.REPEAT, Shader.TileMode.REPEAT) }
+
+    /** The whole-screen background for the current cabinet. */
+    fun background(ctx: Context) = tile(ctx, if (receiver) greyCrackle else grain)
+
+    /**
+     * A seamless tile of irregular cells (a jittered Voronoi pattern): [base] cells with
+     * [crack]-coloured lines between them. [width] is the crack width in pixels, [shadeVar]
+     * the per-cell brightness variation and [dome] how much lighter the cell centres are.
+     */
+    private fun cells(n: Int, cells: Int, seed: Int, base: Int, crack: Int, strength: Float, width: Float,
+                      shadeVar: Int, dome: Float): Bitmap {
         val step = n / cells.toFloat()
-        val r = Random(7)
+        val r = Random(seed)
         val px = Array(cells) { FloatArray(cells) }
         val py = Array(cells) { FloatArray(cells) }
         val sh = Array(cells) { FloatArray(cells) }
         for (gy in 0 until cells) for (gx in 0 until cells) {
             px[gy][gx] = (gx + 0.15f + r.nextFloat() * 0.7f) * step
             py[gy][gx] = (gy + 0.15f + r.nextFloat() * 0.7f) * step
-            sh[gy][gx] = r.nextInt(-6, 7).toFloat()
+            sh[gy][gx] = r.nextInt(-shadeVar, shadeVar + 1).toFloat()
         }
-        val crackCol = Color.rgb(0x7A, 0x52, 0x2E)   // worn-through brown in the crackle
         val bmp = Bitmap.createBitmap(n, n, Bitmap.Config.ARGB_8888)
         for (y in 0 until n) for (x in 0 until n) {
             val cx = (x / step).toInt(); val cy = (y / step).toInt()
@@ -80,16 +119,17 @@ object Radio {
                 val wx = ((gx % cells) + cells) % cells; val wy = ((gy % cells) + cells) % cells
                 val sx = px[wy][wx] + (gx - wx) * step; val sy = py[wy][wx] + (gy - wy) * step
                 val dx = x - sx; val dy = y - sy
-                val d = dx * dx + dy * dy
-                if (d < d1) { d2 = d1; d1 = d; shade = sh[wy][wx] } else if (d < d2) d2 = d
+                val dd = dx * dx + dy * dy
+                if (dd < d1) { d2 = d1; d1 = dd; shade = sh[wy][wx] } else if (dd < d2) d2 = dd
             }
-            val crack = (1f - (sqrt(d2) - sqrt(d1)) / 1.6f).coerceIn(0f, 1f)
-            val dome = (sqrt(d1) / step).coerceIn(0f, 1f)   // slightly domed scales: lighter centres
-            val v = (0x17 + shade - dome * 6 + r.nextInt(-3, 4)).toInt()
-            val base = Color.rgb(v.coerceIn(0, 255), (v - 3).coerceIn(0, 255), (v - 5).coerceIn(0, 255))
-            bmp.setPixel(x, y, mix(base, crackCol, crack * 0.9f))
+            val k = (1f - (sqrt(d2) - sqrt(d1)) / width).coerceIn(0f, 1f)
+            val dm = (sqrt(d1) / step).coerceIn(0f, 1f) * dome
+            val v = (shade - dm + r.nextInt(-3, 4)).toInt()
+            val b = Color.rgb((Color.red(base) + v).coerceIn(0, 255), (Color.green(base) + v).coerceIn(0, 255),
+                (Color.blue(base) + v).coerceIn(0, 255))
+            bmp.setPixel(x, y, mix(b, crack, k * strength))
         }
-        bmp
+        return bmp
     }
 
     /** Translucent light and dark blotches, tiled over the chrome plates to look etched and aged. */
@@ -139,8 +179,13 @@ object Radio {
      */
     class LidDrawable(private val ctx: Context) : Drawable() {
         private val d = ctx.resources.displayMetrics.density
-        private val framePaint = Paint().apply { shader = android.graphics.BitmapShader(grain, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT) }
-        private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PANEL }
+        private val framePaint = Paint().apply {
+            shader = android.graphics.BitmapShader(if (receiver) greyCrackle else grain, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+        }
+        private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            if (receiver) shader = android.graphics.BitmapShader(blackCrackle, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+            else color = PANEL
+        }
         private val rule = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = CREAM }
         private val screw = Paint(Paint.ANTI_ALIAS_FLAG)
         private val slot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(0x30, 0x30, 0x2C); strokeWidth = 1.2f * d }
