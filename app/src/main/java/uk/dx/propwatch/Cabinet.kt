@@ -795,7 +795,7 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
             for ((i, b) in Bands.ALL.withIndex()) {
                 val y = gy + rowH * i + rowH / 2
                 when (e.levels[b.first] ?: 0) {
-                    2 -> lit(c, x, y, 4.2f * d, OPEN_LAMP)
+                    2 -> lit(c, x, y, 4.2f * d, OPEN_LAMP, haloA = 0x48, shine = 0x60)
                     1 -> lit(c, x, y, 3.6f * d, HEADS_LAMP)
                     0 -> c.drawLine(x - 2.5f * d, y, x + 2.5f * d, y, quiet)
                     else -> {
@@ -815,18 +815,52 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
     }
 
     /** A check mark that glows on the screen: a soft halo and a bright core. */
-    private fun lit(c: Canvas, x: Float, y: Float, r: Float, col: Int) {
-        halo.shader = RadialGradient(x, y, r * 2.4f, Color.argb(0x90, Color.red(col), Color.green(col), Color.blue(col)),
+    private fun lit(c: Canvas, x: Float, y: Float, r: Float, col: Int, haloA: Int = 0x90, shine: Int = 0xB0) {
+        halo.shader = RadialGradient(x, y, r * 2.4f, Color.argb(haloA, Color.red(col), Color.green(col), Color.blue(col)),
             Color.argb(0, Color.red(col), Color.green(col), Color.blue(col)), Shader.TileMode.CLAMP)
         c.drawCircle(x, y, r * 2.4f, halo)
         dot.color = col; c.drawCircle(x, y, r, dot)
-        dot.color = Color.argb(0xB0, 255, 0xF4, 0xD8); c.drawCircle(x - r * 0.25f, y - r * 0.25f, r * 0.4f, dot)
+        dot.color = Color.argb(shine, 255, 0xF4, 0xD8); c.drawCircle(x - r * 0.25f, y - r * 0.25f, r * 0.4f, dot)
     }
 
     private companion object {
         val PALE_GOLD = Screen.PALE_GOLD
-        val OPEN_LAMP = Color.rgb(0x6C, 0xF0, 0x8A)
+        val OPEN_LAMP = Color.rgb(0x48, 0xB0, 0x62)
         val HEADS_LAMP = Color.rgb(0xFF, 0xB0, 0x40)
+    }
+}
+
+/**
+ * A nameplate lit from behind like the broadcast screen: pale gold lettering on a
+ * backlit amber strip under old glass, in a worn chrome bezel.
+ */
+class LitNameplate(ctx: Context, private val text: String) : CabinetView(ctx), MoodGlow {
+    private val outer = RectF()
+    private val inner = RectF()
+    private val clip = Path()
+    private val ink = paint(Screen.PALE_GOLD) { typeface = Radio.SERIF; textSize = 10 * t; letterSpacing = 0.3f; textAlign = Paint.Align.CENTER }
+    private val rim get() = 5 * d
+
+    override fun glows(): List<Glow> = if (inner.isEmpty) emptyList() else
+        listOf(Glow(RectF(inner), Mood.AMBER, 1f, screen = true, radius = inner.height() / 2))
+
+    override fun onMeasure(w: Int, h: Int) =
+        setMeasuredDimension(MeasureSpec.getSize(w), (2 * rim + 10 * t + 12 * d).toInt())
+
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+        outer.set(0f, 0f, w.toFloat(), h.toFloat())
+        inner.set(rim, rim, w - rim, h - rim)
+        clip.reset(); clip.addRoundRect(inner, inner.height() / 2, inner.height() / 2, Path.Direction.CW)
+    }
+
+    override fun onDraw(c: Canvas) {
+        Screen.bezel(c, outer, outer.height() / 2, 51, d)
+        c.save(); c.clipPath(clip)
+        Screen.face(c, inner, 1f, floatArrayOf(inner.left + inner.width() * 0.3f, inner.left + inner.width() * 0.7f),
+            inner.bottom, inner.width() * 0.55f)
+        fitText(c, text.uppercase(), inner.centerX(), inner.centerY() + ink.textSize * 0.36f, ink, inner.width() - inner.height())
+        Screen.glass(c, inner, 53, d, dust = 40)
+        c.restore()
     }
 }
 
