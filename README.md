@@ -1,6 +1,12 @@
-# PropWatch — 2m / 70cm DX alerts
+# PropWatch — HF, 6m, 2m & 70cm DX alerts
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
+
+## What's new in v3
+
+- **More bands.** HF band conditions (80m–40m, 30m–20m, 17m–15m, 12m–10m, day or night for your station) from N0NBH, with a heads-up when 10m/12m are rated Good. Live **6m** monitoring from PSKReporter alerts on sporadic E and on long-haul (≥3500 km) multi-hop / F2 DX, and shows N0NBH's Europe 6m and 4m Es status. The dial gains an HF scale marking 160, 80, 40, 20, 15, 10 and 6m.
+- **Check for updates** button in Settings. It compares your build number with the latest published build and offers to download the new APK. The build number is shown under the button.
+- Every build is now signed with the same key, so updates install over the old version. **One-time step:** v1/v2 were signed with a throwaway key, so uninstall that version before installing v3 (settings reset once). After that, updates install normally.
 
 ## What's new in v2
 
@@ -15,6 +21,8 @@ An Android app that runs the same checks as your scheduled task every few hours 
 | Aurora | NOAA SWPC Kp observed + 3-day forecast, SWPC watches | Kp ≥ 6- now or within 24 h, or a G2+ watch |
 | Tropo (forecast) | Open-Meteo vertical profiles at 5 points from the Wash to Denmark | Refractivity gradient ≤ −157 N/km (ducting) on both sides of the North Sea for ≥ 2 forecast hours |
 | Tropo / Es (live) | PSKReporter spots, last 30 min | 2m: ≥ 5 station pairs ≥ 700 km touching UK/Benelux, or ≥ 2 pairs ≥ 1000 km. 70cm: ≥ 2 pairs ≥ 700 km. Es: ≥ 2 pairs 1000–2500 km in NW Europe, May–Aug or December |
+| HF bands | N0NBH (hamqsl.com) solar data | Shown for reference; heads-up when 12m–10m is rated Good for the current day/night |
+| Live 6m | PSKReporter spots, last 30 min | Es: ≥ 3 station pairs 700–2500 km in NW Europe. DX: ≥ 2 pairs ≥ 3500 km touching UK/Benelux |
 | Meteor scatter | Built-in shower dates | Quadrantids, Perseids or Geminids peak within 24 h (low-priority heads-up) |
 
 Meteor-scatter and EME modes (MSK144, Q65, JT65…) are left out of the live tropo count. The 2m threshold is set above a single 700 km spot because aircraft scatter on FT8 regularly reaches 700–800 km from eastern England.
@@ -44,6 +52,12 @@ The project is ready to build but not pre-built. Two ways:
 ### Option B — Android Studio
 
 Open the folder in Android Studio (Hedgehog or newer), let it sync, then **Run** to a phone with USB debugging on, or **Build → Build APK(s)**.
+
+## Updating
+
+Tap **Check for updates** in Settings. If a newer build is published it offers **Download**; open the downloaded `PropWatch.apk` and install over the current version. Settings are kept.
+
+Only builds from the `main` branch are published as updates. The APK is signed with the debug key in `app/debug.keystore`, which is committed so every build matches. That's fine for a personal app, but it means anyone with the repo could sign an APK that installs over PropWatch, so for wider distribution switch to a private release key kept in a GitHub secret.
 
 ## Installing
 

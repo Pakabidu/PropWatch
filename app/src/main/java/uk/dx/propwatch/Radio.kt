@@ -18,6 +18,7 @@ import android.graphics.drawable.StateListDrawable
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import kotlin.math.ln
 import kotlin.random.Random
 
 /**
@@ -121,7 +122,7 @@ class GrilleView(ctx: Context) : View(ctx) {
         val w = width.toFloat(); val h = height.toFloat()
         c.drawRoundRect(0f, 0f, w, h, 8 * d, 8 * d, bg)
         for ((r, g) in bars) { bar.shader = g; c.drawRoundRect(r, r.height() / 2, r.height() / 2, bar) }
-        val label = "2m · 70cm"
+        val label = "HF · 6m · 2m · 70cm"
         val bw = badgeText.measureText(label) + 28 * d
         val bt = h / 2 - 11 * d
         c.drawRoundRect(w / 2 - bw / 2, bt, w / 2 + bw / 2, bt + 22 * d, 4 * d, 4 * d, badge)
@@ -130,10 +131,13 @@ class GrilleView(ctx: Context) : View(ctx) {
 }
 
 /**
- * Backlit slide-rule dial. Two decorative band scales (2m, 70cm) and a
+ * Backlit slide-rule dial. Decorative band scales (HF to 6m, 2m, 70cm) and a
  * condition scale the needle points at: QUIET, HEADS-UP or OPEN.
  */
 class DialView(ctx: Context) : View(ctx) {
+    private companion object {
+        val HF_BANDS = listOf("160" to 1.85, "80" to 3.6, "40" to 7.1, "20" to 14.15, "15" to 21.2, "10" to 28.5, "6" to 50.2)
+    }
     private val d = resources.displayMetrics.density
     private var needle = 1f      // 0..1 across the scale
     private var glow = 1f        // 0 = cold, 1 = fully warmed up
@@ -159,7 +163,7 @@ class DialView(ctx: Context) : View(ctx) {
 
     override fun onMeasure(w: Int, h: Int) {
         val width = MeasureSpec.getSize(w)
-        setMeasuredDimension(width, (width * 0.52f).toInt().coerceAtMost((230 * d).toInt()))
+        setMeasuredDimension(width, (width * 0.62f).toInt().coerceAtMost((270 * d).toInt()))
     }
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
@@ -191,10 +195,20 @@ class DialView(ctx: Context) : View(ctx) {
         val r = inner.right - 18 * d
         val span = r - l
         val h = inner.height()
-        c.drawText("PROPWATCH", inner.centerX(), inner.top + h * 0.16f, title)
+        c.drawText("PROPWATCH", inner.centerX(), inner.top + h * 0.13f, title)
 
+        // HF-6m scale: popular band markers on a log frequency scale, 1.8 - 54 MHz, like a shortwave dial.
+        val y0 = inner.top + h * 0.34f
+        c.drawText("HF", inner.left + 8 * d, y0, small)
+        c.drawLine(l, y0, r, y0, tick)
+        val lo = ln(1.8); val hi = ln(54.0)
+        for ((label, mhz) in HF_BANDS) {
+            val x = l + span * ((ln(mhz) - lo) / (hi - lo)).toFloat()
+            c.drawLine(x, y0, x, y0 - 7 * d, tick)
+            c.drawText(label, x, y0 - 10 * d, num)
+        }
         // 2m band scale: 144.0 - 146.0 MHz
-        val y1 = inner.top + h * 0.40f
+        val y1 = inner.top + h * 0.52f
         c.drawText("2m", inner.left + 8 * d, y1, small)
         c.drawLine(l, y1, r, y1, tick)
         for (i in 0..20) {
@@ -204,7 +218,7 @@ class DialView(ctx: Context) : View(ctx) {
             if (i % 10 == 0) c.drawText("${144 + i / 10}", x, y1 - 11 * d, num)
         }
         // 70cm band scale: 430 - 440 MHz
-        val y2 = inner.top + h * 0.60f
+        val y2 = inner.top + h * 0.69f
         c.drawText("70", inner.left + 8 * d, y2, small)
         c.drawLine(l, y2, r, y2, tick)
         for (i in 0..10) {
@@ -213,9 +227,8 @@ class DialView(ctx: Context) : View(ctx) {
             c.drawLine(x, y2, x, y2 - len, tick)
             if (i % 5 == 0) c.drawText("${430 + i}", x, y2 - 11 * d, num)
         }
-        // Condition scale
         // Condition scale: the label under the needle lights up in needle red.
-        val y3 = inner.top + h * 0.86f
+        val y3 = inner.top + h * 0.89f
         cond.textAlign = Paint.Align.CENTER
         for ((i, name) in listOf("QUIET", "HEADS-UP", "OPEN").withIndex()) {
             val pos = levelPos(i)
@@ -224,7 +237,7 @@ class DialView(ctx: Context) : View(ctx) {
         }
 
         val x = l + span * needle
-        c.drawLine(x, inner.top + h * 0.24f, x, y3 - 14 * d, needlePaint)
+        c.drawLine(x, inner.top + h * 0.19f, x, y3 - 14 * d, needlePaint)
         c.drawRoundRect(inner, 12 * d, 12 * d, glare)
     }
 

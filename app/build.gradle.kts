@@ -11,8 +11,20 @@ android {
         applicationId = "uk.dx.propwatch"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0"
+        // CI passes -PbuildNumber=<run number>; the in-app update check compares against it.
+        versionCode = (findProperty("buildNumber") as String?)?.toIntOrNull() ?: 3
+        versionName = "3.0"
+    }
+
+    // A fixed debug key, so each CI build installs over the last one (Android rejects
+    // an update signed with a different key, and CI would otherwise make a new key every run).
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {

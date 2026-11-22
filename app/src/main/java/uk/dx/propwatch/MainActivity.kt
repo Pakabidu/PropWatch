@@ -1,6 +1,7 @@
 package uk.dx.propwatch
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -27,6 +28,7 @@ class MainActivity : Activity() {
     private lateinit var results: LinearLayout
     private lateinit var checkBtn: Button
     private lateinit var dial: DialView
+    private lateinit var updateBtn: Button
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -77,6 +79,9 @@ class MainActivity : Activity() {
         root.addView(link("Live 144 MHz map (DXView)", "https://vhf.dxview.org/"))
         root.addView(link("NOAA SWPC 3-day forecast", "https://services.swpc.noaa.gov/text/3-day-forecast.txt"))
         root.addView(link("DXMaps (Es / tropo)", "https://www.dxmaps.com/spots/map.php?Lan=E&Frec=144"))
+        root.addView(link("DXMaps 6m", "https://www.dxmaps.com/spots/map.php?Lan=E&Frec=50"))
+        root.addView(link("HF band conditions (N0NBH)", "https://www.hamqsl.com/solar.html"))
+        root.addView(link("PSKReporter map (all bands)", "https://pskreporter.info/pskmap.html"))
 
         root.addView(section("Settings"))
         val st = Store.station(this)
@@ -109,11 +114,19 @@ class MainActivity : Activity() {
             Notifier.post(this, 99, Finding("Test", true, "PropWatch test",
                 "Notifications are working. Real alerts look like this."))
         })
+        updateBtn = radioButton("Check for updates") { checkForUpdate() }
+        root.addView(updateBtn)
+        root.addView(TextView(this).apply {
+            textSize = 11f; typeface = Radio.MONO; setTextColor(Radio.BRASS); gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, 0)
+            text = "PROPWATCH ${Updater.currentName(this@MainActivity)} · BUILD ${Updater.currentBuild(this@MainActivity)}"
+        })
         root.addView(TextView(this).apply {
             textSize = 12f; setTextColor(Radio.CREAM); alpha = 0.55f; setPadding(0, dp(16), 0, 0)
             text = "Alerts only fire when a threshold is met: tropo ducting forecast along the North Sea paths " +
-                "or a live cluster of ≥700 km spots, Kp ≥ 6- (or a G2 watch), 2m Es in progress, or a major " +
-                "meteor shower peak (heads-up). The tropo forecast is a model estimate, not Hepburn's index."
+                "or a live cluster of ≥700 km spots, Kp ≥ 6- (or a G2 watch), 2m or 6m Es in progress, 6m " +
+                "long-haul DX, or a major meteor shower peak or 10m/12m opening (heads-ups). HF conditions for " +
+                "80–10m are shown for reference. The tropo forecast is a model estimate, not Hepburn's index."
         })
 
         setContentView(ScrollView(this).apply {
@@ -223,6 +236,38 @@ class MainActivity : Activity() {
                 checkBtn.isEnabled = true
                 checkBtn.text = "Check now"
                 render(r, animateNeedle = true)
+            }
+        }.start()
+    }
+
+    private fun checkForUpdate() {
+        updateBtn.isEnabled = false
+        updateBtn.text = "Checking…"
+        Thread {
+            val res = runCatching { Updater.check(this) }
+            runOnUiThread {
+                updateBtn.isEnabled = true
+                updateBtn.text = "Check for updates"
+                if (isFinishing) return@runOnUiThread
+                res.onSuccess { info ->
+                    if (info.newer) {
+                        AlertDialog.Builder(this)
+                            .setTitle("Update available")
+                            .setMessage("Build ${info.latest} is available (you have build ${info.current}).\n\n" +
+                                "Download it, then open PropWatch.apk to install over this version. " +
+                                "Your settings are kept.")
+                            .setPositiveButton("Download") { _, _ ->
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Updater.APK_URL)))
+                            }
+                            .setNegativeButton("Later", null)
+                            .show()
+                    } else {
+                        Toast.makeText(this, "You're up to date (build ${info.current})", Toast.LENGTH_SHORT).show()
+                    }
+                }.onFailure {
+                    Toast.makeText(this, "Couldn't check for updates: ${it.message ?: it.javaClass.simpleName}",
+                        Toast.LENGTH_LONG).show()
+                }
             }
         }.start()
     }
