@@ -54,6 +54,15 @@ object Geo {
         return 2 * r * atan2(sqrt(h), sqrt(1 - h))
     }
 
+    /** The point [km] away from (lat, lon) on initial bearing [bearingDeg], along a great circle. */
+    fun destination(lat: Double, lon: Double, bearingDeg: Double, km: Double): Pair<Double, Double> {
+        val d = km / 6371.0
+        val p1 = Math.toRadians(lat); val l1 = Math.toRadians(lon); val t = Math.toRadians(bearingDeg)
+        val p2 = kotlin.math.asin(sin(p1) * cos(d) + cos(p1) * sin(d) * cos(t))
+        val l2 = l1 + atan2(sin(t) * sin(d) * cos(p1), cos(d) - sin(p1) * sin(p2))
+        return Math.toDegrees(p2) to ((Math.toDegrees(l2) + 540.0) % 360.0 - 180.0)
+    }
+
     fun bearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val p1 = Math.toRadians(lat1)
         val p2 = Math.toRadians(lat2)

@@ -41,8 +41,7 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
         // Aurora: Kp 5.67 is "6-" on NOAA's scale, i.e. G2.
         const val KP_ALERT = 5.67
 
-        // Tropo model: -157 N/km is the ducting threshold.
-        const val DUCT_GRADIENT = -157.0
+        // Tropo model: ducting (-157 N/km, see TropoPaths) for at least this many forecast hours.
         const val MIN_DUCT_HOURS = 2
 
         // Live-spot thresholds per band live in SpotRules.
@@ -51,15 +50,6 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
         const val KP_FC = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json"
         const val SWPC_ALERTS = "https://services.swpc.noaa.gov/products/alerts.json"
         const val HAMQSL = "https://www.hamqsl.com/solarxml.php"
-
-        /** Points along the North Sea paths from the Wash. */
-        val PATH = listOf(
-            PathPoint("The Wash", 52.98, -0.02, ukSide = true),
-            PathPoint("Mid North Sea", 53.40, 2.50, ukSide = true),
-            PathPoint("Dutch coast", 52.60, 4.60, ukSide = false),
-            PathPoint("German Bight", 54.20, 7.50, ukSide = false),
-            PathPoint("West Denmark", 56.00, 8.30, ukSide = false),
-        )
 
         // PSKReporter asks for at most one query every 5 minutes. One query covers every
         // chosen band's window, is shared by all the live checks, and is reused for 5 minutes
@@ -71,14 +61,13 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
         private var pskCache: Triple<Long, LongRange, List<Spot>>? = null   // time, Hz range, spots
         private var pskBackoffUntil = 0L
 
-        private val UK = ZoneId.of("Europe/London")
         private val FMT = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK)
-        fun ukTime(ms: Long): String = FMT.format(Instant.ofEpochMilli(ms).atZone(UK))
+        /** Day and time in the phone's own time zone, e.g. "Sun 14:32". */
+        fun localTime(ms: Long): String = FMT.format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()))
     }
 
     class HttpError(val code: Int, val retryAfterS: Long?, msg: String) : IOException(msg)
 
-    data class PathPoint(val name: String, val lat: Double, val lon: Double, val ukSide: Boolean)
 
     fun run(): Report {
         val now = System.currentTimeMillis()
@@ -181,14 +170,14 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
         val forecastHigh = (fcMax ?: 0.0) >= KP_ALERT
         val alert = observedHigh || forecastHigh || watch != null
 
-        val kpNow = latest?.let { "Kp %.2f (%s)".format(it.second, ukTime(it.first)) } ?: "Kp n/a"
+        val kpNow = latest?.let { "Kp %.2f (%s)".format(it.second, localTime(it.first)) } ?: "Kp n/a"
         val fcTxt = fcMax?.let { "max %.2f next 24 h".format(it) } ?: "no forecast"
         if (!alert) {
             return Finding("Aurora", false, "Quiet — $kpNow, $fcTxt", "No G2 watch. Threshold is Kp ≥ 6-.")
         }
         val timing = when {
             observedHigh -> "now"
-            firstHigh != null -> "from ~${ukTime(firstHigh.first)} UK time"
+            firstHigh != null -> "from ~${localTime(firstHigh.first)}"
             else -> "per SWPC $watch watch"
         }
         val strong = maxOf(recentMax ?: 0.0, fcMax ?: 0.0) >= 7.0
@@ -208,16 +197,18 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
         for (l in levels) {
             vars += "temperature_${l}hPa"; vars += "relative_humidity_${l}hPa"; vars += "geopotential_height_${l}hPa"
         }
+        // The station plus two rings of points (250 and 500 km) on the eight compass bearings.
+        val points = TropoPaths.points(home.lat, home.lon)
         val url = "https://api.open-meteo.com/v1/forecast" +
-            "?latitude=" + PATH.joinToString(",") { "%.2f".format(Locale.US, it.lat) } +
-            "&longitude=" + PATH.joinToString(",") { "%.2f".format(Locale.US, it.lon) } +
+            "?latitude=" + points.joinToString(",") { "%.2f".format(Locale.US, it.lat) } +
+            "&longitude=" + points.joinToString(",") { "%.2f".format(Locale.US, it.lon) } +
             "&hourly=" + vars.joinToString(",") +
             "&forecast_days=2&timezone=GMT"
         val body = get(url).trim()
         val locs: List<JSONObject> = if (body.startsWith("[")) {
             val a = JSONArray(body); (0 until a.length()).map { a.getJSONObject(it) }
         } else listOf(JSONObject(body))
-        if (locs.size != PATH.size) throw IOException("Weather model returned ${locs.size} points")
+        if (locs.size != points.size) throw IOException("Weather model returned ${locs.size} of ${points.size} points")
 
         // gradient[point][hourMs]
         val grads = mutableListOf<Map<Long, Double>>()
@@ -248,22 +239,10 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
             grads += m
         }
 
-        val hours = grads.flatMap { it.keys }.toSortedSet()
-        val ductHours = mutableListOf<Long>()
-        val farDucting = mutableSetOf<Int>()
+        val result = TropoPaths.evaluate(grads)
+        val ductHours = result.ductHours
         var peak = 0.0
-        for (t in hours) {
-            val ducting = PATH.indices.filter { (grads[it][t] ?: 0.0) <= DUCT_GRADIENT }
-            val ukSide = ducting.any { PATH[it].ukSide }
-            val farSide = ducting.filter { !PATH[it].ukSide }
-            // Strong lift right over the Wash and the adjacent sea also counts.
-            val overHome = (grads[0][t] ?: 0.0) <= DUCT_GRADIENT && (grads[1][t] ?: 0.0) <= DUCT_GRADIENT
-            if ((ukSide && farSide.isNotEmpty()) || overHome) {
-                ductHours += t
-                farDucting += farSide
-            }
-            for (g in grads) g[t]?.let { peak = maxOf(peak, Geo.liftIndex(it)) }
-        }
+        for (g in grads) for (v in g.values) peak = maxOf(peak, Geo.liftIndex(v))
 
         val anticyclone = homeMsl?.let { it >= 1030.0 } == true && homeWind?.let { it < 15.0 } == true
         val wx = buildString {
@@ -274,24 +253,24 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
         val alert = ductHours.size >= MIN_DUCT_HOURS
         if (!alert) {
             return Finding("Tropo forecast", false,
-                "No ducting forecast on North Sea paths (peak est. index %.1f)".format(peak),
-                "$wx. Model estimate from Open-Meteo profiles; check Hepburn's maps for detail.")
+                "No ducting forecast around you (peak est. index %.1f)".format(peak),
+                "$wx. Model estimate from Open-Meteo profiles at your station and 250/500 km out in 8 directions; " +
+                    "check Hepburn's maps for your region for detail.")
         }
-        val dirs = if (farDucting.isEmpty()) "E across the North Sea" else farDucting.sorted().joinToString(", ") {
-            val p = PATH[it]
-            val b = Geo.bearing(home.lat, home.lon, p.lat, p.lon)
-            "${p.name} (${Geo.compass(b)} %.0f°)".format(b)
+        val dirs = result.directions.joinToString(", ") {
+            "${Geo.compass(it.bearing.toDouble())} to %.0f km (${it.hours} h)".format(it.reachKm)
         }
+        val heading = result.directions.take(2).joinToString("/") { Geo.compass(it.bearing.toDouble()) }
         val conf = when {
             ductHours.size >= 6 && anticyclone -> "high"
             ductHours.size >= 4 || anticyclone -> "medium"
             else -> "low–medium"
         }
-        val detail = "Ducting ${ukTime(ductHours.first())}–${ukTime(ductHours.last())} UK time " +
+        val detail = "Ducting ${localTime(ductHours.first())}–${localTime(ductHours.last())} " +
             "(${ductHours.size} h). Paths: $dirs. Peak est. index %.1f. $wx.\n".format(peak) +
             ductNote() + " Confidence $conf.\n" +
-            "Source: Open-Meteo model profiles (a proxy for Hepburn — confirm on dxinfocentre.com)."
-        return Finding("Tropo forecast", true, "Tropo duct forecast — ${ductBandsText()} to the E/NE", detail)
+            "Source: Open-Meteo model profiles (an estimate; confirm on Hepburn's maps for your region at dxinfocentre.com)."
+        return Finding("Tropo forecast", true, "Tropo duct forecast — ${ductBandsText()} to the $heading", detail)
     }
 
     /** The chosen bands a duct favours most, by [TropoBand.ductSensitivityFactor]: "23cm, 70cm & 2m". */
@@ -335,7 +314,7 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
         if (cached != null && now - cached.first < PSK_MIN_GAP_MS) return cached.second to cached.third
         if (now < pskBackoffUntil) {
             if (cached != null && now - cached.first < PSK_STALE_OK_MS && covers(cached)) return cached.second to cached.third
-            throw IOException("PSKReporter is rate-limiting (HTTP 429). Next try after ${ukTime(pskBackoffUntil)} UK.")
+            throw IOException("PSKReporter is rate-limiting (HTTP 429). Next try after ${localTime(pskBackoffUntil)}.")
         }
         try {
             val spots = fetchSpots("${want.first}-${want.last}")
@@ -345,7 +324,7 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
             if (e.code != 429 && e.code != 503) throw e
             pskBackoffUntil = now + maxOf(PSK_BACKOFF_MS, (e.retryAfterS ?: 0L) * 1000L)
             if (cached != null && now - cached.first < PSK_STALE_OK_MS && covers(cached)) return cached.second to cached.third
-            throw IOException("PSKReporter is rate-limiting (HTTP ${e.code}). Next try after ${ukTime(pskBackoffUntil)} UK.")
+            throw IOException("PSKReporter is rate-limiting (HTTP ${e.code}). Next try after ${localTime(pskBackoffUntil)}.")
         }
     }
 
