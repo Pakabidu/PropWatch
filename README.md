@@ -2,6 +2,18 @@
 
 An Android app that runs the same checks as your scheduled task every few hours in the background, and only notifies you when conditions are very good.
 
+## What's new in v4.0
+
+A new look inspired by 1940s portable shortwave sets (original artwork; no maker's branding):
+
+- **Case:** black alligator-grain leatherette with a stitched leather carrying handle on chrome brackets.
+- **Speaker cloth:** dark woven grille with a stitched cream Yagi-and-radio-waves motif and a gold script nameplate.
+- **Dial:** a square black dial in a chrome bezel with gold arc scales for HF, 6m, 2m and 70cm. The cream needle swings from a chrome pivot to QUIET, HEADS-UP or OPEN, and the dial lamp warms up at startup.
+- **Waveband switch:** a brushed-chrome plate of black push-buttons (ALL, HF, 6 M, 2 M, 70 CM). They work: pressing one shows only that band's readings, and the needle and status follow that band.
+- **Lid:** readings, sources and settings sit on a black instruction panel with a double cream rule and corner screws, under cream nameplate headings.
+- **Station log:** the location screen in Settings is now a cream-on-black world chart with your station pinned in red, above your town, country, coordinates, locator and fix details. **Check my location** dims the chart and sweeps a tuning cursor across it while the fix comes in.
+- **App icon:** the portable set itself, with its leather handle, gold-scaled dial and chrome waveband buttons.
+
 ## What's new in v3.2
 
 - The lit radio location screen now lives in **Settings** instead of popping up. It always shows the station's town, country, latitude/longitude and Maidenhead locator; **Check my location** dims it, warms it up and sweeps the tuning cursor in place while a fresh fix comes in. If location is switched off, a **Turn on location** button appears under it.

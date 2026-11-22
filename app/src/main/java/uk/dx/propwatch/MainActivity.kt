@@ -30,10 +30,11 @@ class MainActivity : Activity() {
     private lateinit var results: LinearLayout
     private lateinit var checkBtn: Button
     private lateinit var dial: DialView
+    private lateinit var bandStrip: BandStripView
     private lateinit var updateBtn: Button
     private lateinit var latField: EditText
     private lateinit var lonField: EditText
-    private lateinit var screen: LocationScreenView
+    private lateinit var screen: StationLogView
     private lateinit var locOnBtn: Button
     private var locating = false
 
@@ -41,8 +42,8 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Radio.LEATHER
-        window.navigationBarColor = Radio.LEATHER
+        window.statusBarColor = Color.BLACK
+        window.navigationBarColor = Color.BLACK
         Notifier.ensureChannels(this)
         val ask = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -58,20 +59,41 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(16), dp(16), dp(32))
         }
 
-        // Front panel: grille, dial, status readout, main button.
+        // Carrying handle, then the case front: speaker cloth, dial and band switch, readout, main button.
+        root.addView(HandleView(this))
         val front = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(12), dp(12), dp(14))
-            background = Radio.panelBg(this@MainActivity, Radio.BRASS, 14f)
+            background = GradientDrawable().apply {
+                setColor(Color.argb(0x38, 0, 0, 0)); cornerRadius = dp(16).toFloat(); setStroke(dp(2), Color.BLACK)
+            }
         }
-        front.addView(GrilleView(this))
-        dial = DialView(this).apply {
+        front.addView(ClothView(this))
+        val tuning = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
         }
-        front.addView(dial)
+        dial = DialView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.6f)
+        }
+        tuning.addView(dial)
+        bandStrip = BandStripView(this).apply {
+            bands = BANDS.map { it.first to it.second }
+            selected = BANDS.indexOfFirst { it.first == Store.band(this@MainActivity) }.coerceAtLeast(0)
+            onSelect = { i ->
+                Sfx.click(this@MainActivity)
+                Store.saveBand(this@MainActivity, BANDS[i].first)
+                render(Store.loadReport(this@MainActivity), animateNeedle = true)
+            }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
+                leftMargin = dp(10)
+            }
+        }
+        tuning.addView(bandStrip)
+        front.addView(tuning)
         status = TextView(this).apply {
-            textSize = 12.5f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.85f
+            textSize = 12f; typeface = Radio.MONO; setTextColor(Radio.CREAM); alpha = 0.85f
             gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(10))
         }
         front.addView(status)
@@ -79,48 +101,59 @@ class MainActivity : Activity() {
         front.addView(checkBtn)
         root.addView(front)
 
+        // The open lid: readings, sources and settings on a black instruction panel.
+        val lid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(26), dp(24), dp(26), dp(26))
+            background = Radio.LidDrawable(this@MainActivity)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
+        }
+        root.addView(lid)
+        lid.addView(section("Readings", first = true))
+
         results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(10), 0, dp(4)) }
-        root.addView(results)
+        lid.addView(results)
 
-        root.addView(section("Sources"))
-        root.addView(link("Hepburn tropo forecast", "https://www.dxinfocentre.com/tropo.html"))
-        root.addView(link("Live 144 MHz map (DXView)", "https://vhf.dxview.org/"))
-        root.addView(link("NOAA SWPC 3-day forecast", "https://services.swpc.noaa.gov/text/3-day-forecast.txt"))
-        root.addView(link("DXMaps (Es / tropo)", "https://www.dxmaps.com/spots/map.php?Lan=E&Frec=144"))
-        root.addView(link("DXMaps 6m", "https://www.dxmaps.com/spots/map.php?Lan=E&Frec=50"))
-        root.addView(link("HF band conditions (N0NBH)", "https://www.hamqsl.com/solar.html"))
-        root.addView(link("PSKReporter map (all bands)", "https://pskreporter.info/pskmap.html"))
+        lid.addView(section("Sources"))
+        lid.addView(link("Hepburn tropo forecast", "https://www.dxinfocentre.com/tropo.html"))
+        lid.addView(link("Live 144 MHz map (DXView)", "https://vhf.dxview.org/"))
+        lid.addView(link("NOAA SWPC 3-day forecast", "https://services.swpc.noaa.gov/text/3-day-forecast.txt"))
+        lid.addView(link("DXMaps (Es / tropo)", "https://www.dxmaps.com/spots/map.php?Lan=E&Frec=144"))
+        lid.addView(link("DXMaps 6m", "https://www.dxmaps.com/spots/map.php?Lan=E&Frec=50"))
+        lid.addView(link("HF band conditions (N0NBH)", "https://www.hamqsl.com/solar.html"))
+        lid.addView(link("PSKReporter map (all bands)", "https://pskreporter.info/pskmap.html"))
 
-        root.addView(section("Settings"))
+        lid.addView(section("Settings"))
         val st = Store.station(this)
         val lat = number("Latitude", "%.4f".format(java.util.Locale.US, st.lat)).also { latField = it }
         val lon = number("Longitude", "%.4f".format(java.util.Locale.US, st.lon)).also { lonField = it }
         val interval = number("Check every (hours, 1–12)", Store.intervalHours(this).toString(), decimal = false)
         // The station's location, on a backlit radio screen that lives in Settings.
-        screen = LocationScreenView(this).apply {
+        screen = StationLogView(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(8), 0, dp(6)) }
         }
-        root.addView(screen)
+        lid.addView(screen)
         locOnBtn = radioButton("Turn on location") {
             startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
         }.apply { visibility = View.GONE }
-        root.addView(locOnBtn)
-        root.addView(radioSwitch("Use phone location (GPS)", Store.useGps(this)) { on ->
+        lid.addView(locOnBtn)
+        lid.addView(radioSwitch("Use phone location (GPS)", Store.useGps(this)) { on ->
             Store.saveUseGps(this, on)   // applies immediately
             applyGpsMode()
             if (on) { if (Locator.hasPermission(this)) refreshStationQuietly() else requestPermissions(LOCATION_PERMS, REQ_REFRESH) }
         })
-        root.addView(radioButton("Check my location") { checkMyLocation() })
-        root.addView(label("Latitude")); root.addView(lat)
-        root.addView(label("Longitude")); root.addView(lon)
-        root.addView(label("Check every (hours, 1–12)")); root.addView(interval)
+        lid.addView(radioButton("Check my location") { checkMyLocation() })
+        lid.addView(label("Latitude")); lid.addView(lat)
+        lid.addView(label("Longitude")); lid.addView(lon)
+        lid.addView(label("Check every (hours, 1–12)")); lid.addView(interval)
         val enabled = radioSwitch("Background monitoring", Store.enabled(this)) { }
         val sounds = radioSwitch("Radio switch sounds", Store.sounds(this)) { on ->
             Store.saveSounds(this, on)   // applies immediately, no need to Save
         }
-        root.addView(enabled); root.addView(sounds)
-        root.addView(radioButton("Save settings") {
+        lid.addView(enabled); lid.addView(sounds)
+        lid.addView(radioButton("Save settings") {
             val la = lat.text.toString().toDoubleOrNull()
             val lo = lon.text.toString().toDoubleOrNull()
             val h = interval.text.toString().toIntOrNull()
@@ -139,18 +172,18 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
             }
         })
-        root.addView(radioButton("Send test notification") {
+        lid.addView(radioButton("Send test notification") {
             Notifier.post(this, 99, Finding("Test", true, "PropWatch test",
                 "Notifications are working. Real alerts look like this."))
         })
         updateBtn = radioButton("Check for updates") { checkForUpdate() }
-        root.addView(updateBtn)
-        root.addView(TextView(this).apply {
+        lid.addView(updateBtn)
+        lid.addView(TextView(this).apply {
             textSize = 11f; typeface = Radio.MONO; setTextColor(Radio.BRASS); gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, 0)
             text = "PROPWATCH ${Updater.currentName(this@MainActivity)} · BUILD ${Updater.currentBuild(this@MainActivity)}"
         })
-        root.addView(TextView(this).apply {
+        lid.addView(TextView(this).apply {
             textSize = 12f; setTextColor(Radio.CREAM); alpha = 0.55f; setPadding(0, dp(16), 0, 0)
             text = "Alerts only fire when a threshold is met: tropo ducting forecast along the North Sea paths " +
                 "or a live cluster of ≥700 km spots, Kp ≥ 6- (or a G2 watch), 2m or 6m Es in progress, 6m " +
@@ -220,17 +253,14 @@ class MainActivity : Activity() {
         setOnCheckedChangeListener { _, on -> onChange(on); Sfx.click(this@MainActivity) }
     }
 
-    private fun section(t: String) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(0, dp(22), 0, dp(6))
-        addView(TextView(context).apply {
-            text = t.uppercase(); textSize = 13f; typeface = Radio.SERIF; letterSpacing = 0.3f
-            setTextColor(Radio.BRASS)
-        })
-        addView(View(context).apply {
-            setBackgroundColor(Radio.BRASS_DARK)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply { topMargin = dp(5) }
-        })
+    /** Section heading: a cream nameplate ribbon with widely spaced black capitals, as on the lid. */
+    private fun section(t: String, first: Boolean = false) = TextView(this).apply {
+        text = t.uppercase(); textSize = 12f; typeface = Radio.SERIF; letterSpacing = 0.45f
+        setTextColor(Radio.INK); gravity = Gravity.CENTER
+        setPadding(dp(8), dp(4), dp(8), dp(4))
+        background = GradientDrawable().apply { setColor(Radio.CREAM); cornerRadius = dp(2).toFloat() }
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, if (first) 0 else dp(22), 0, dp(8)) }
     }
 
     private fun label(t: String) = TextView(this).apply {
@@ -250,11 +280,31 @@ class MainActivity : Activity() {
 
     // ---- Behaviour ----
 
-    private fun level(r: Report?): Int = when {
-        r == null -> 0
-        r.findings.any { it.alert && !it.lowGrade } -> 2
-        r.findings.any { it.alert } -> 1
-        else -> 0
+    private fun level(r: Report?): Int {
+        val f = shown(r)
+        return when {
+            f.any { it.alert && !it.lowGrade } -> 2
+            f.any { it.alert } -> 1
+            else -> 0
+        }
+    }
+
+    /** Which bands each reading is about, for the waveband buttons. */
+    private fun bandsOf(mode: String): Set<String> = when (mode) {
+        "HF bands" -> setOf("hf")
+        "Live 6m spots" -> setOf("6m")
+        "Live 2m spots" -> setOf("2m")
+        "Live 70cm spots" -> setOf("70cm")
+        "Tropo forecast" -> setOf("2m", "70cm")
+        "Meteor scatter" -> setOf("6m", "2m")
+        "Aurora" -> setOf("6m", "2m", "70cm")
+        else -> setOf("hf", "6m", "2m", "70cm")
+    }
+
+    /** The readings for the selected waveband button. */
+    private fun shown(r: Report?): List<Finding> {
+        val band = Store.band(this)
+        return r?.findings.orEmpty().filter { band == "all" || band in bandsOf(it.mode) }
     }
 
     private fun checkNow() {
@@ -277,6 +327,10 @@ class MainActivity : Activity() {
     // ---- Location ----
 
     companion object {
+        /** Waveband buttons: key, button label, readout name. */
+        private val BANDS = listOf(
+            Triple("all", "ALL", "ALL BANDS"), Triple("hf", "HF", "HF"), Triple("6m", "6 M", "6 METRES"),
+            Triple("2m", "2 M", "2 METRES"), Triple("70cm", "70 CM", "70 CM"))
         private const val REQ_STARTUP = 1
         private const val REQ_LOCATE = 2
         private const val REQ_REFRESH = 3
@@ -339,7 +393,7 @@ class MainActivity : Activity() {
             (Store.placeCountry(this) ?: "—").uppercase(),
             latLonText(st.lat, st.lon),
             "LOCATOR ${Geo.latLonToLoc(st.lat, st.lon)}",
-            foot, animate)
+            foot, st.lat, st.lon, animate)
     }
 
     /** Makes a fix the station position (GPS mode only) and refreshes the fields. */
@@ -414,7 +468,7 @@ class MainActivity : Activity() {
                 else screen.showResult(
                     (p.city ?: "Unknown town").uppercase(), (p.country ?: "Country unknown").uppercase(),
                     latLonText(l.latitude, l.longitude), "LOCATOR ${Geo.latLonToLoc(l.latitude, l.longitude)}",
-                    fixNote(l) + " · NOT USED (GPS OFF)", true)
+                    fixNote(l) + " · NOT USED (GPS OFF)", l.latitude, l.longitude, true)
             }
         }
     }
@@ -458,10 +512,12 @@ class MainActivity : Activity() {
             status.text = "NO READINGS YET — PRESS CHECK NOW"
             return
         }
-        val alerts = r.findings.count { it.alert && !it.lowGrade }
-        status.text = "LAST CHECK ${Checker.ukTime(r.timeMs)} UK · " +
+        val list = shown(r)
+        val alerts = list.count { it.alert && !it.lowGrade }
+        val band = BANDS.firstOrNull { it.first == Store.band(this) }?.third ?: "ALL BANDS"
+        status.text = "LAST CHECK ${Checker.ukTime(r.timeMs)} UK\n$band · " +
             if (alerts > 0) "$alerts ALERT${if (alerts > 1) "S" else ""}" else "CONDITIONS NORMAL"
-        for (f in r.findings) results.addView(card(f))
+        for (f in list) results.addView(card(f))
     }
 
     private fun card(f: Finding): View {
@@ -475,7 +531,7 @@ class MainActivity : Activity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = Radio.panelBg(this@MainActivity, if (lit) lamp else Radio.BRASS_DARK)
+            background = Radio.cardBg(this@MainActivity, if (lit) lamp else Color.argb(0x80, 0xF0, 0xE4, 0xC4))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(5), 0, dp(5)) }
 
@@ -486,7 +542,7 @@ class MainActivity : Activity() {
                     gradientType = GradientDrawable.RADIAL_GRADIENT
                     gradientRadius = dp(9).toFloat()
                     colors = intArrayOf(if (lit) Color.WHITE else lamp, lamp, Color.argb(0, 0, 0, 0))
-                    setStroke(dp(1), Radio.BRASS_DARK)
+                    setStroke(dp(1), Radio.CHROME_DARK)
                 }
                 alpha = if (lit) 1f else 0.6f
                 layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply {
@@ -498,7 +554,7 @@ class MainActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 addView(TextView(context).apply {
                     text = f.mode.uppercase(); textSize = 11f; typeface = Radio.SERIF; letterSpacing = 0.2f
-                    setTextColor(if (lit) lamp else Radio.BRASS)
+                    setTextColor(if (lit) lamp else Radio.GOLD)
                 })
                 addView(TextView(context).apply {
                     text = f.headline; textSize = 15f; setTextColor(Radio.CREAM); setPadding(0, dp(2), 0, dp(2))

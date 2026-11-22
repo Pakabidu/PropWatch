@@ -36,6 +36,10 @@ object Store {
     fun fixNote(ctx: Context): String? = p(ctx).getString("fix_note", null)
     fun saveFixNote(ctx: Context, note: String?) = p(ctx).edit().putString("fix_note", note).apply()
 
+    /** Selected waveband button: all, hf, 6m, 2m or 70cm. */
+    fun band(ctx: Context): String = p(ctx).getString("band", "all") ?: "all"
+    fun saveBand(ctx: Context, band: String) = p(ctx).edit().putString("band", band).apply()
+
     fun intervalHours(ctx: Context) = p(ctx).getInt("interval", 3)
     fun saveInterval(ctx: Context, h: Int) = p(ctx).edit().putInt("interval", h).apply()
 
