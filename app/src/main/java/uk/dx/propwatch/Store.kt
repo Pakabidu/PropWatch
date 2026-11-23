@@ -52,7 +52,7 @@ object Store {
     fun moodLight(ctx: Context) = p(ctx).getBoolean("mood_light", false)
     fun saveMoodLight(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("mood_light", on).apply()
 
-    /** Selected waveband button: all, hf, 6m, 2m or 70cm. */
+    /** Selected waveband button: all, hf, 6m, 2m, 70cm or cb. */
     fun band(ctx: Context): String = p(ctx).getString("band", "all") ?: "all"
     fun saveBand(ctx: Context, band: String) = p(ctx).edit().putString("band", band).apply()
 
@@ -61,6 +61,10 @@ object Store {
 
     fun enabled(ctx: Context) = p(ctx).getBoolean("enabled", true)
     fun saveEnabled(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("enabled", on).apply()
+
+    /** Watch citizens band (27 MHz) for skip. */
+    fun cb(ctx: Context) = p(ctx).getBoolean("cb", true)
+    fun saveCb(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("cb", on).apply()
 
     fun sounds(ctx: Context) = p(ctx).getBoolean("sounds", true)
     fun saveSounds(ctx: Context, on: Boolean) = p(ctx).edit().putBoolean("sounds", on).apply()

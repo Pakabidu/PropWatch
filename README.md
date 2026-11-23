@@ -1,23 +1,23 @@
 # PropWatch 1.0 — DX propagation alerts for radio amateurs
 
-PropWatch watches the bands for you and only speaks up when conditions are worth it: tropospheric ducting, sporadic E, aurora, long-haul 6m DX, meteor showers and good HF conditions. It runs its checks in the background every few hours and every time you open it, and notifies you when an opening is on.
+PropWatch watches the bands for you and only speaks up when conditions are worth it: tropospheric ducting, sporadic E, aurora, long-haul 6m DX, meteor showers and good HF conditions. It watches citizens band (27 MHz) skip too. It runs its checks in the background every few hours and every time you open it, and notifies you when an opening is on.
 
 It looks and sounds like a well-used 1940s portable shortwave set: black alligator-grain case with a leather handle, a black dial with gold scales, chrome plates, bakelite switches and jewel lamps, all scuffed, scratched and dusty from decades on the shack bench.
 
 ## On the set
 
 - **The dial** points to QUIET, HEADS-UP or OPEN for the chosen waveband; its lamp warms up as the set comes on.
-- **Waveband buttons** (ALL, HF, 6 M, 2 M, 70 CM) filter the readings, with a pilot lamp showing each band's condition.
+- **Waveband buttons** (ALL, HF, 6 M, 2 M, 70 CM, CB) filter the readings, with a pilot lamp showing each band's condition.
 - **Rocker switches:** **SOUND** (all the set's sounds, including the broadcast radio), **MONITOR** (background checks) and **GPS** (use the phone's location).
 - **MOOD LIGHT** knob: the room goes dark around a table lamp and every dial, chart and jewel lamp glows warm orange.
-- **The little broadcast set** under the speaker plays old-time radio: **1** The 1920s Radio Network, **2** Old Time Radio Service, **3** your own station (the first press asks for a stream address; long-press to change it). It keeps playing in the background with a Stop button in its notification.
+- **The little broadcast set** under the speaker has a lit SWR / power meter whose needle swings with the music, and plays old-time radio: **1** The 1920s Radio Network, **2** Old Time Radio Service, **3** your own station (the first press asks for a stream address; long-press to change it). It keeps playing in the background with a Stop button in its notification.
 - **Check now** runs every check straight away, to the sound of the valves warming up. A check also runs every time the app opens.
 
 ## In the lid
 
 - **Station log:** a world chart with your station pinned, your town, coordinates and Maidenhead locator. **Check my location** takes a fresh fix (with a direction-finding sweep and "QTH?" in Morse).
 - **DX log:** the last 24 hours of checks for each band, behind a backlit glass screen glowing warm amber like the broadcast dial.
-- **Readings**, **Sources** (links to the maps and forecasts behind the checks), **Tropo bands**, **Settings** and **Support PropWatch**.
+- **Readings**, **Sources** (links to the maps and forecasts behind the checks), **Bands**, **Settings** and **Support PropWatch**.
 
 ## What it checks
 
@@ -27,6 +27,7 @@ It looks and sounds like a well-used 1940s portable shortwave set: black alligat
 | Live spots, per tropo band | PSKReporter reception reports, last 30 min, in each band's weak-signal segment | A cluster of long paths touching your area (within 800 km of you), with thresholds per band — see below |
 | Aurora | NOAA SWPC Kp observed and forecast, SWPC watches | Kp ≥ 6- now or within 24 h, or a G2+ watch |
 | HF bands | N0NBH (hamqsl.com) | Shown for reference; heads-up when 12m–10m are rated Good |
+| CB (27 MHz) | PSKReporter reports on the CB channels (26.9–28.0 MHz), N0NBH 6m Es (Europe) and 10m ratings | ≥ 2 paths over 600 km touching your area (sporadic E skip) or over 3000 km (F2 DX); heads-up when 6m Es is reported over Europe or 10m is rated Good |
 | Meteor scatter | Built-in shower dates | Quadrantids, Perseids or Geminids peak within 24 h (heads-up) |
 
 Live-spot thresholds:
@@ -41,9 +42,9 @@ Live-spot thresholds:
 
 2m needs a cluster because aircraft scatter on FT8 regularly reaches 700–800 km. Meteor-scatter and EME modes (MSK144, Q65, JT65…) and the QO-100 satellite are left out. Each opening notifies when it first appears, then at most every 12 hours while it lasts. Thresholds live in `SpotRules.kt`.
 
-### Tropo bands
+### Bands
 
-Settings → Tropo bands lists 6m, 4m, 2m, 1.25m, 70cm and 23cm, plus an optional microwave group (13cm, 9cm, 6cm, 3cm). Defaults follow your ITU region, worked out from your locator (Region 1 gets 4m, Region 2 gets 1.25m, microwaves are opt-in); switch any band on or off. Each band carries a duct sensitivity factor relative to 2m (higher bands are trapped by shallower ducts), which the forecast uses to name the bands a duct favours.
+The Bands section lists 6m, 4m, 2m, 1.25m, 70cm and 23cm, plus an optional microwave group (13cm, 9cm, 6cm, 3cm). Defaults follow your ITU region, worked out from your locator (Region 1 gets 4m, Region 2 gets 1.25m, microwaves are opt-in); switch any band on or off. Each band carries a duct sensitivity factor relative to 2m (higher bands are trapped by shallower ducts), which the forecast uses to name the bands a duct favours. CB monitoring has its own switch there.
 
 ### Limits worth knowing
 

@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 class PropWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
 
     override fun doWork(): Result {
-        val r = Checker(Store.station(applicationContext), Store.visibleTropoBands(applicationContext)).run()
+        val r = Checker(Store.station(applicationContext), Store.visibleTropoBands(applicationContext), Store.cb(applicationContext)).run()
         Store.saveReport(applicationContext, r)
         Notifier.handle(applicationContext, r)
         return Result.success()

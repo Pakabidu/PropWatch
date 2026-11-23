@@ -135,3 +135,34 @@ object SpotRules {
         return Verdict(Kind.QUIET, es.map(::pairKey).toSet().size, es.maxByOrNull { it.km }, es, spots.size)
     }
 }
+
+/**
+ * Citizens band (11m, 27 MHz) skip. CB isn't a tropo band: it opens by sporadic E
+ * (single-hop skip, about 600–2500 km) and, near solar maximum, by F2 (long DX). Very few
+ * CB stations report to PSKReporter (mostly FT8 around 27.265 MHz), so two distinct long
+ * paths touching your area are enough.
+ */
+object CbRules {
+    /** The CB channels: the 40-channel CEPT/FCC band (26.965–27.405 MHz) and the UK 27/81 band (27.60–27.99 MHz). */
+    val RANGE_HZ = 26_900_000L..27_995_000L
+    const val SKIP_MIN_KM = 600.0
+    const val DX_KM = 3000.0
+    const val PAIRS = 2
+
+    enum class Kind { QUIET, SKIP, DX }
+    data class Verdict(val kind: Kind, val pairs: Int, val best: Spot?, val considered: Int)
+
+    fun inCb(s: Spot) = s.hz in RANGE_HZ
+
+    fun evaluate(allSpots: List<Spot>, homeLat: Double, homeLon: Double): Verdict {
+        val spots = allSpots.filter(::inCb)
+        fun near(s: Spot) = Geo.km(homeLat, homeLon, s.la, s.loa) <= SpotRules.ES_AREA_KM ||
+            Geo.km(homeLat, homeLon, s.lb, s.lob) <= SpotRules.ES_AREA_KM
+        val dx = spots.filter { it.km >= DX_KM && near(it) }
+        val dxPairs = dx.map(SpotRules::pairKey).toSet().size
+        if (dxPairs >= PAIRS) return Verdict(Kind.DX, dxPairs, dx.maxByOrNull { it.km }, spots.size)
+        val skip = spots.filter { it.km >= SKIP_MIN_KM && near(it) }
+        val pairs = skip.map(SpotRules::pairKey).toSet().size
+        return Verdict(if (pairs >= PAIRS) Kind.SKIP else Kind.QUIET, pairs, skip.maxByOrNull { it.km }, spots.size)
+    }
+}
