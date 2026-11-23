@@ -13,14 +13,14 @@ import android.graphics.Shader
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.animation.LinearInterpolator
-import android.view.animation.OvershootInterpolator
 import kotlin.math.cos
+import kotlin.math.log10
 import kotlin.math.sin
 
 /**
- * The little broadcast set tucked under the speaker, in the style of the 1940s portable
- * shortwave sets: a black dial with gold arcs in a chrome bezel, its lamp warming up as
- * a station tunes in, and an etched chrome plate of black station push-buttons.
+ * The little broadcast set tucked under the speaker: a lit SWR / power meter in a chrome
+ * bezel, its needle swinging with the station's loudness and its lamp warming up as a
+ * station tunes in, and an etched chrome plate of black station push-buttons.
  *
  * Tap a station to play it; tap the lit one again to switch off. [onLongPress] fires for
  * a long press (used to change the custom station).
@@ -32,11 +32,11 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
     var onLongPress: ((Int) -> Unit)? = null
     /** SOUND is off: the set plays on silently, and the dial says so. */
     var muted = false
-        set(v) { field = v; invalidate() }
+        set(v) { field = v; startMeter(); invalidate() }
 
     private var state = StreamService.State.OFF
     private var playing = -1
-    private var needle = 0f        // 0..1 across the dial
+    private var needle = 0f        // 0..1 across the meter, following the loudness
     private var lampGlow = OFF_GLOW   // dial lamp: a faint warm glow when off, flickering while tuning, full when playing
     private var flicker: ValueAnimator? = null
     private var downAt = 0L
@@ -52,7 +52,16 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private val needlePaint = paint(Color.rgb(0xF4, 0xEC, 0xD8)) { strokeWidth = 1.6f * d; strokeCap = Paint.Cap.ROUND }
     private val hub = paint()
     private val card = paint()
-    private companion object { const val OFF_GLOW = 0.22f }
+    private companion object {
+        const val OFF_GLOW = 0.22f
+        /** Where the SWR scale turns red (3:1), and its marks: label to position along the arc. */
+        const val SWR_RED = 0.58f
+        val SWR_MARKS = listOf("1" to 0f, "1.5" to 0.22f, "2" to 0.38f, "3" to 0.58f, "5" to 0.78f, "∞" to 1f)
+        /** Loudness (dBFS) at the bottom and top of the scale. */
+        const val DB_FLOOR = -42f
+        const val DB_TOP = -6f
+    }
+    private val red = paint { style = Paint.Style.STROKE; strokeWidth = 2.2f * d }
     private val label = paint(Radio.INK) { typeface = Radio.SERIF; textSize = 7.5f * t; letterSpacing = 0.06f; textAlign = Paint.Align.CENTER }
     private val btn = paint()
     private val btnEdge = paint(Color.BLACK) { style = Paint.Style.STROKE; strokeWidth = 1f * d }
@@ -61,7 +70,22 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
     private val jewel = paint()
     private val dial = RectF(); private val inner = RectF(); private val plate = RectF(); private val r = RectF()
 
-    private val positions = floatArrayOf(0.18f, 0.5f, 0.82f)
+    /** The meter needle's ballistics: quick to rise, slow to fall, like a real moving-coil meter. */
+    private val meterTick = object : Runnable {
+        override fun run() {
+            val live = state == StreamService.State.PLAYING && !muted
+            val target = if (!live) 0f else {
+                val rms = StreamService.level()
+                if (rms <= 0f) 0f else ((20 * log10(rms) - DB_FLOOR) / (DB_TOP - DB_FLOOR)).coerceIn(0f, 1f)
+            }
+            needle += (target - needle) * (if (target > needle) 0.45f else 0.12f)
+            if (needle < 0.002f && !live) needle = 0f
+            invalidate()
+            if (live || needle > 0f) postOnAnimation(this) else ticking = false
+        }
+    }
+    private var ticking = false
+    private fun startMeter() { if (!ticking && isAttachedToWindow) { ticking = true; postOnAnimation(meterTick) } }
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         dial.set(0f, 0f, w.toFloat(), h * 0.56f)
@@ -90,27 +114,43 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
         // Gold scales brighten with the lamp, to a pale lit gold at full.
         val gold = Screen.gold(g)
         arc.color = gold; tick.color = gold; mark.color = gold; small.color = gold
-        val px = inner.centerX(); val py = inner.bottom + inner.height() * 0.15f
-        val a0 = -150f; val a1 = -30f
+        val px = inner.centerX(); val py = inner.top + inner.height() * 1.45f   // pivot below the glass
+        val a0 = -135f; val a1 = -45f
         fun ang(v: Float) = Math.toRadians((a0 + (a1 - a0) * v).toDouble())
-        val radii = listOf(0.55f, 0.72f, 0.89f).map { it * inner.height() }
-        for ((k, rr) in radii.withIndex()) {
-            r.set(px - rr, py - rr, px + rr, py + rr)
-            c.drawArc(r, a0, a1 - a0, false, arc)
-            val n = if (k == 2) 20 else 10
-            for (i in 0..n) {
-                val a = ang(i / n.toFloat()); val len = (if (i % 5 == 0) 3.5f else 2f) * d
-                c.drawLine(px + rr * cos(a).toFloat(), py + rr * sin(a).toFloat(), px + (rr - len) * cos(a).toFloat(), py + (rr - len) * sin(a).toFloat(), tick)
-            }
+        // An SWR / power meter, as on a CB rig: SWR on the outer scale (red from 3:1 up),
+        // watts on the inner one. The needle swings with the loudness of the station.
+        val ro = inner.height() * 1.12f; val rp = inner.height() * 0.92f
+        r.set(px - ro, py - ro, px + ro, py + ro)
+        c.drawArc(r, a0, (a1 - a0) * SWR_RED, false, arc)
+        red.color = Radio.mix(Color.rgb(0x5A, 0x22, 0x18), Color.rgb(0xFF, 0x5A, 0x38), g)
+        c.drawArc(r, a0 + (a1 - a0) * SWR_RED, (a1 - a0) * (1 - SWR_RED), false, red)
+        for (i in 0..20) {
+            val v = i / 20f; val a = ang(v); val len = (if (i % 5 == 0) 4f else 2.2f) * d
+            tick.color = if (v > SWR_RED) red.color else gold
+            c.drawLine(px + ro * cos(a).toFloat(), py + ro * sin(a).toFloat(), px + (ro - len) * cos(a).toFloat(), py + (ro - len) * sin(a).toFloat(), tick)
         }
-        // Station marks on the outer arc.
-        val ro = radii.last()
-        for ((i, v) in positions.withIndex()) {
-            val a = ang(v); val tr = ro - 9 * d
-            mark.color = if (i == playing && state != StreamService.State.OFF) Radio.mix(gold, Mood.LAMP, g) else gold
-            c.drawText("${i + 1}", px + tr * cos(a).toFloat(), py + tr * sin(a).toFloat() + mark.textSize * 0.36f, mark)
+        tick.color = gold
+        for ((lab, v) in SWR_MARKS) {
+            val a = ang(v); val tr = ro - 9f * d
+            mark.color = if (v > SWR_RED) red.color else gold
+            c.drawText(lab, px + tr * cos(a).toFloat(), py + tr * sin(a).toFloat() + mark.textSize * 0.36f, mark)
         }
-        c.drawText("BROADCAST", px, inner.top + small.textSize + 3 * d, small)
+        r.set(px - rp, py - rp, px + rp, py + rp)
+        c.drawArc(r, a0, a1 - a0, false, arc)
+        for (i in 0..8) {
+            val a = ang(i / 8f); val len = (if (i % 2 == 0) 3.5f else 2f) * d
+            c.drawLine(px + rp * cos(a).toFloat(), py + rp * sin(a).toFloat(), px + (rp + len) * cos(a).toFloat(), py + (rp + len) * sin(a).toFloat(), tick)
+        }
+        for (w in 0..4) {
+            val a = ang(w / 4f); val tr = rp - 6.5f * d
+            c.drawText("$w", px + tr * cos(a).toFloat(), py + tr * sin(a).toFloat() + small.textSize * 0.36f, small)
+        }
+        mark.color = gold
+        small.textAlign = Paint.Align.LEFT
+        c.drawText("SWR", inner.left + 5 * d, inner.bottom - 4 * d, small)
+        small.textAlign = Paint.Align.RIGHT
+        c.drawText("WATTS", inner.right - 5 * d, inner.bottom - 4 * d, small)
+        small.textAlign = Paint.Align.CENTER
         // Needle (under the station card, so the name stays readable).
         val a = ang(needle)
         c.drawLine(px, py, px + ro * 1.02f * cos(a).toFloat(), py + ro * 1.02f * sin(a).toFloat(), needlePaint)
@@ -124,7 +164,7 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
                 else stations.getOrNull(playing)?.name?.uppercase() ?: "ON THE AIR"
         }
         // On a dark card of its own so it reads clearly over the scales.
-        val ty = inner.top + inner.height() * 0.62f
+        val ty = inner.top + 3 * d + status.textSize   // along the top, clear of the scales
         val size = status.textSize
         while (status.measureText(text) > inner.width() * 0.8f && status.textSize > 8 * d) status.textSize *= 0.94f
         val tw = status.measureText(text)
@@ -168,14 +208,11 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
         Wear.rub(c, RectF(plate.left, plate.top, plate.right, plate.top + 6 * d + label.textSize), 95, d, Color.rgb(0xC8, 0xC5, 0xBA), 2)
     }
 
-    /** Follow the stream service: move the needle, warm or dim the lamp. */
+    /** Follow the stream service: the meter springs into life when a station plays; warm or dim the lamp. */
     fun show(s: StreamService.State, index: Int) {
-        val wasOff = state == StreamService.State.OFF || state == StreamService.State.ERROR
         state = s; playing = index
         flicker?.cancel(); flicker = null
-        val target = if (index in 0..2 && s != StreamService.State.OFF) positions[index] else 0f
-        if (isLaidOut && needle != target) animate(needle, target, if (wasOff) 900L else 500L, 0L, OvershootInterpolator(0.8f)) { needle = it }
-        else needle = target
+        startMeter()
         when (s) {
             StreamService.State.TUNING -> {   // the valves warming up: an uneven, rising glow
                 flicker = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -209,7 +246,12 @@ class BroadcastSetView(ctx: Context) : CabinetView(ctx), MoodGlow {
         return out
     }
 
-    override fun onDetachedFromWindow() { flicker?.cancel(); super.onDetachedFromWindow() }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); startMeter() }
+
+    override fun onDetachedFromWindow() {
+        flicker?.cancel(); removeCallbacks(meterTick); ticking = false
+        super.onDetachedFromWindow()
+    }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val i = if (e.y >= plate.top) ((e.x - plate.left) / (plate.width() / 3)).toInt().coerceIn(0, 2) else -1

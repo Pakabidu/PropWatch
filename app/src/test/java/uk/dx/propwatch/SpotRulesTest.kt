@@ -106,4 +106,31 @@ class SpotRulesTest {
         val reversed = s.copy(la = s.lb, loa = s.lob, lb = s.la, lob = s.loa)
         assertEquals(berlin, SpotRules.farEnd(reversed, homeLat, homeLon))
     }
+
+    // ---- CB (27 MHz) ----
+
+    private fun cb(spots: List<Spot>) = CbRules.evaluate(spots, homeLat, homeLon).kind
+
+    @Test fun cbChannelsOnly() {
+        assertTrue(CbRules.inCb(spot(madrid.first, madrid.second, 27.265)))
+        assertTrue(CbRules.inCb(spot(madrid.first, madrid.second, 27.78125)))    // UK 27/81
+        assertFalse(CbRules.inCb(spot(madrid.first, madrid.second, 28.074)))     // 10m FT8
+    }
+
+    @Test fun cbSkipNeedsTwoLongPaths() {
+        assertEquals(CbRules.Kind.QUIET, cb(listOf(spot(madrid.first, madrid.second, 27.265))))
+        assertEquals(CbRules.Kind.SKIP, cb(listOf(spot(madrid.first, madrid.second, 27.265), spot(rome.first, rome.second, 27.265))))
+        // Ground wave across town doesn't count.
+        assertEquals(CbRules.Kind.QUIET, cb(listOf(spot(53.2, 0.1, 27.265), spot(52.8, -0.3, 27.265))))
+    }
+
+    @Test fun cbDxAndFarAwayPaths() {
+        val ny = 40.71 to -74.0
+        val rio = -22.9 to -43.2
+        assertEquals(CbRules.Kind.DX, cb(listOf(spot(ny.first, ny.second, 27.265), spot(rio.first, rio.second, 27.265))))
+        // Skip between two places far from the station isn't ours.
+        assertEquals(CbRules.Kind.QUIET, cb(listOf(
+            spot(-33.9, 151.2, 27.265, fromLat = -37.8, fromLon = 145.0),
+            spot(-27.5, 153.0, 27.265, fromLat = -37.8, fromLon = 145.0))))
+    }
 }

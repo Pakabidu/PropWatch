@@ -123,7 +123,7 @@ class MainActivity : Activity() {
             Triple("PSKReporter map", "ALL", "https://pskreporter.info/pskmap.html"),
         )))
 
-        lid.addView(section("Tropo bands"))
+        lid.addView(section("Bands"))
         tropoBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         lid.addView(tropoBox)
         refreshTropoBands()
@@ -324,10 +324,37 @@ class MainActivity : Activity() {
             refreshTropoBands()
         })
         if (microwaveOpen) for (b in TropoBands.MICROWAVE) tropoBox.addView(bandToggle(b, region, b.id in visible, b.id in defaults))
+        tropoBox.addView(cbToggle())
         if (overrides.isNotEmpty()) tropoBox.addView(radioButton("Reset to Region ${region?.number ?: ""} defaults") {
             Store.clearTropoBandOverrides(this)
             refreshTropoBands()
         })
+    }
+
+    /** Citizens band on or off, styled like the tropo band toggles. */
+    private fun cbToggle(): View = LinearLayout(this).apply {
+        val on = Store.cb(this@MainActivity)
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(14), dp(10), dp(14), dp(10))
+        background = Radio.buttonBg(this@MainActivity, big = false)
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(10), 0, dp(4)) }
+        addView(TextView(context).apply {
+            text = (if (on) "●  " else "○  ") + "CB  ·  27 MHz"
+            textSize = 17f; typeface = Radio.SERIF
+            setTextColor(if (on) Radio.LAMP_ALERT else Radio.CREAM)
+        })
+        addView(TextView(context).apply {
+            text = "Citizens band skip: sporadic E and F2 openings on 11m, from live 27 MHz reports and the 6m and 10m conditions."
+            textSize = 13f; setTextColor(Radio.CREAM); alpha = 0.75f; setPadding(0, dp(2), 0, 0)
+        })
+        isClickable = true
+        setOnClickListener {
+            Sfx.click(this@MainActivity)
+            Store.saveCb(this@MainActivity, !on)
+            refreshTropoBands()
+            render(Store.loadReport(this@MainActivity), animateNeedle = false)
+        }
     }
 
     /** One band: lamp, label and frequency, with its allocation underneath. Tapping flips it. */
@@ -564,6 +591,7 @@ class MainActivity : Activity() {
     /** Waveband plate rows: each band's live condition beside its button. */
     private fun bandRows(r: Report?) = BAND_KEYS.map { key ->
         val lv = if (r == null) null else Bands.level(r.findings, key)
+        if (key == "cb" && !Store.cb(this)) return@map BandPlateView.Row(bandName(key), "OFF", null)
         BandPlateView.Row(bandName(key), when (lv) {
             null -> "—"; 2 -> "OPEN"; 1 -> "HEADS-UP"; -1 -> "NO DATA"; else -> "QUIET"
         }, when (lv) { 2 -> Radio.LAMP_ALERT; 1 -> Radio.LAMP_HEADSUP; -1 -> Radio.LAMP_ERROR; else -> null })
@@ -620,7 +648,7 @@ class MainActivity : Activity() {
         if (Store.useGps(this)) Locator.lastKnown(this)?.let { useFix(it) }
         val station = Store.station(this)
         Thread {
-            val r = Checker(station, Store.visibleTropoBands(this)).run()
+            val r = Checker(station, Store.visibleTropoBands(this), Store.cb(this)).run()
             Store.saveReport(this, r)
             Notifier.handle(this, r)
             runOnUiThread {

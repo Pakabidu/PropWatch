@@ -34,8 +34,10 @@ data class Station(val lat: Double, val lon: Double)
 /**
  * @param bands the tropo bands to check live (the user's choice, see [Store.visibleTropoBands]).
  *   Each gets its own "Live … spots" reading; the tropo forecast names them too.
+ * @param cb also watch citizens band (27 MHz) for skip.
  */
-class Checker(private val home: Station, private val bands: List<TropoBand> = TropoBands.CORE) {
+class Checker(private val home: Station, private val bands: List<TropoBand> = TropoBands.CORE,
+              private val cb: Boolean = true) {
 
     companion object {
         // Aurora: Kp 5.67 is "6-" on NOAA's scale, i.e. G2.
@@ -60,6 +62,8 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
         private val pskLock = Any()
         private var pskCache: Triple<Long, LongRange, List<Spot>>? = null   // time, Hz range, spots
         private var pskBackoffUntil = 0L
+        private var cbCache: Pair<Long, List<Spot>>? = null   // CB has its own small query
+        const val CB_MODE = "CB 11m"
 
         private val FMT = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK)
         /** Day and time in the phone's own time zone, e.g. "Sun 14:32". */
@@ -75,7 +79,8 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
             safe("Aurora") { aurora(now) },
             safe("Tropo forecast") { tropoForecast(now) },
             safe("HF bands") { hfBands(now) },
-        ) + bands.map { b -> safe("Live ${b.label} spots") { liveBand(now, b) } } + listOf(
+        ) + bands.map { b -> safe("Live ${b.label} spots") { liveBand(now, b) } } +
+            (if (cb) listOf(safe(CB_MODE) { citizensBand(now) }) else emptyList()) + listOf(
             safe("Meteor scatter") { meteors(now) },
         )
         return Report(now, findings)
@@ -392,6 +397,79 @@ class Checker(private val home: Station, private val bands: List<TropoBand> = Tr
                 else "Normal — ${v.pairs} paths ≥%.0f km${if (bestTxt.isNotEmpty()) ", $bestTxt" else ""}".format(r.tropoKm),
                 "${v.considered} ${band.label} reports checked.$n0nbh")
         }
+    }
+
+    // ---------------------------------------------------------------- citizens band (27 MHz)
+
+    /** CB spots from PSKReporter: a small query of its own, cached and rate-limited like the VHF one. */
+    private fun cbSpots(now: Long): List<Spot> = synchronized(pskLock) {
+        val cached = cbCache
+        if (cached != null && now - cached.first < PSK_MIN_GAP_MS) return cached.second
+        if (now < pskBackoffUntil) {
+            if (cached != null && now - cached.first < PSK_STALE_OK_MS) return cached.second
+            throw IOException("PSKReporter is rate-limiting. Next try after ${localTime(pskBackoffUntil)}.")
+        }
+        try {
+            val spots = fetchSpots("${CbRules.RANGE_HZ.first}-${CbRules.RANGE_HZ.last}")
+            cbCache = now to spots
+            spots
+        } catch (e: HttpError) {
+            if (e.code != 429 && e.code != 503) throw e
+            pskBackoffUntil = now + maxOf(PSK_BACKOFF_MS, (e.retryAfterS ?: 0L) * 1000L)
+            if (cached != null && now - cached.first < PSK_STALE_OK_MS) return cached.second
+            throw IOException("PSKReporter is rate-limiting (HTTP ${e.code}). Next try after ${localTime(pskBackoffUntil)}.")
+        }
+    }
+
+    /**
+     * CB skip: live 27 MHz reports first; failing those, N0NBH's 6m sporadic-E report for
+     * Europe (when 6m skips, 27 MHz always does) and its 10m rating (F2 DX on 10m carries
+     * down to 11m).
+     */
+    private fun citizensBand(now: Long): Finding {
+        var spotErr: String? = null
+        val v = try { CbRules.evaluate(cbSpots(now), home.lat, home.lon) } catch (e: Exception) { spotErr = e.message; null }
+        val s = try { solar } catch (_: Exception) { null }
+        if (v == null && s == null) throw IOException("PSKReporter and N0NBH are both unavailable")
+        val day = isDay(now)
+        val ten = s?.get("band/12m-10m/${if (day) "day" else "night"}")
+        val inEurope = home.lat in 34.0..72.0 && home.lon in -25.0..45.0
+        val es6 = if (inEurope) s?.get("vhf/E-Skip/europe_6m") else null
+        val es6Open = es6 != null && !es6.contains("closed", ignoreCase = true)
+        val tenTxt = ten?.let { " 10m is rated $it (N0NBH)." } ?: ""
+        val spotsTxt = when {
+            v == null -> "Live CB reports unavailable: $spotErr"
+            else -> "${v.considered} CB reports in the last 30 min (PSKReporter, mostly FT8 around 27.265 MHz)."
+        }
+        fun look(sp: Spot): String {
+            val far = SpotRules.farEnd(sp, home.lat, home.lon)
+            val b = Geo.bearing(home.lat, home.lon, far.first, far.second)
+            return "${Geo.compass(b)} (%.0f°)".format(b)
+        }
+        val best = v?.best?.let { "best ${it.a}–${it.b} %.0f km (${it.mode})".format(it.km) } ?: ""
+        return when {
+            v?.kind == CbRules.Kind.DX -> Finding(CB_MODE, true, "CB DX skip open (F2)",
+                "${v.pairs} paths over %.0f km touching your area in the last 30 min; $best. Look ${look(v.best!!)}.$tenTxt\n".format(CbRules.DX_KM) +
+                    "Source: PSKReporter.")
+            v?.kind == CbRules.Kind.SKIP -> Finding(CB_MODE, true, "CB skip open — sporadic E",
+                "${v.pairs} paths over %.0f km touching your area in the last 30 min; $best. Look ${look(v.best!!)}. ".format(CbRules.SKIP_MIN_KM) +
+                    "Es skip comes and goes fast.$tenTxt\nSource: PSKReporter.")
+            es6Open -> Finding(CB_MODE, true, "CB skip likely — 6m sporadic E over Europe",
+                "N0NBH reports \"$es6\" on 6m over Europe. When 6m skips, 27 MHz skips too, with hops of about 600–2000 km.$tenTxt\n$spotsTxt",
+                lowGrade = true)
+            ten.equals("Good", ignoreCase = true) -> Finding(CB_MODE, true, "CB DX likely — 10m rated Good",
+                "N0NBH rates 12m–10m Good ${if (day) "by day" else "tonight"}; F2 openings on 10m usually reach down to 27 MHz.\n$spotsTxt",
+                lowGrade = true)
+            else -> Finding(CB_MODE, false, "No CB skip" + (ten?.let { " — 10m $it" } ?: ""),
+                spotsTxt + if (v != null && v.pairs > 0) " ${v.pairs} long path${if (v.pairs == 1) "" else "s"}; $best." else "")
+        }
+    }
+
+    /** Daytime at the station by local solar time: which N0NBH column applies. */
+    private fun isDay(now: Long): Boolean {
+        val utcH = Instant.ofEpochMilli(now).atZone(ZoneOffset.UTC).let { it.hour + it.minute / 60.0 }
+        val solarH = ((utcH + home.lon / 15.0) % 24 + 24) % 24
+        return solarH in 6.0..18.0
     }
 
     // ---------------------------------------------------------------- HF + 6m/4m status (N0NBH)
