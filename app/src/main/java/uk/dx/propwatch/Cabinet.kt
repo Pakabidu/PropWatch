@@ -375,7 +375,7 @@ class TonePlateView(ctx: Context) : CabinetView(ctx), MoodGlow {
 }
 
 /**
- * The backlit screen of the broadcast set's dial, shared by every lit screen on the set:
+ * The backlit screen shared by every lit screen on the set:
  * a black face behind old glass, lit warm amber by bulbs behind it, in a worn chrome
  * bezel. [g] is how far the lamps are up (0 cold, 1 full).
  */
@@ -400,13 +400,13 @@ object Screen {
     private val m = android.graphics.Matrix()
 
     /**
-     * The lit face, exactly as on the broadcast set: one bulb low in the middle, its pool
-     * scaled to the screen in the broadcast dial's proportions, so the brightness and
+     * The lit face: one bulb low in the middle, its pool scaled to the screen in fixed
+     * proportions (a 2.25:1 dial), so the brightness and
      * vignette match on every screen whatever its shape. Call inside a clip to the screen.
      */
     fun face(c: Canvas, r: RectF, g: Float) {
         val h = r.height()
-        m.setScale(r.width() / h / BROADCAST_ASPECT, 1f, r.centerX(), r.bottom)
+        m.setScale(r.width() / h / REFERENCE_ASPECT, 1f, r.centerX(), r.bottom)
         p.shader = RadialGradient(r.centerX(), r.bottom, h * 1.4f,
             intArrayOf(Radio.mix(Color.rgb(0x1A, 0x14, 0x0E), Color.rgb(0xB0, 0x78, 0x30), g),
                 Radio.mix(Color.rgb(0x10, 0x0D, 0x0A), Color.rgb(0x5A, 0x38, 0x14), g),
@@ -420,7 +420,7 @@ object Screen {
         c.drawRect(r, p)
         p.shader = null
     }
-    private const val BROADCAST_ASPECT = 2.25f
+    private const val REFERENCE_ASPECT = 2.25f
 
     /** Gold scales brightening with the lamp, to a pale lit gold at full. */
     fun gold(g: Float) = if (g < 0.6f) Radio.mix(Color.rgb(0x6A, 0x54, 0x30), Radio.GOLD, g / 0.6f)
@@ -429,7 +429,7 @@ object Screen {
     fun cream(g: Float) = if (g < 0.6f) Radio.mix(Color.rgb(0x6A, 0x5C, 0x44), Radio.CREAM, g / 0.6f)
         else Radio.mix(Radio.CREAM, PALE_CREAM, (g - 0.6f) / 0.4f)
 
-    /** Old glass over the face (still inside the clip): dust and a scratch or two, as on the broadcast set. */
+    /** Old glass over the face (still inside the clip): dust and a scratch or two. */
     fun glass(c: Canvas, r: RectF, seed: Int, d: Float, dust: Int = 60) {
         Wear.dust(c, r, seed, dust, d, alpha = 60)
         Wear.scratches(c, r, seed + 1, 2, d, alpha = 40)
@@ -509,7 +509,7 @@ class DialView(ctx: Context) : CabinetView(ctx), MoodGlow {
         c.save()
         c.clipPath(screenClip)
         val s = inner.width(); val px = cx(); val py = cy()
-        // Backlit exactly like the broadcast set.
+        // Backlit by a bulb behind the glass.
         Screen.face(c, inner, glow)
 
         val gold = Screen.gold(glow)
@@ -716,7 +716,7 @@ class BandPlateView(ctx: Context) : CabinetView(ctx), MoodGlow {
 
 /**
  * The DX log: the last 24 hours of checks, shown behind a backlit glass screen in a
- * worn chrome bezel, glowing warm amber like the broadcast set's dial. Gold rules and
+ * worn chrome bezel, glowing warm amber like the other dials. Gold rules and
  * lettering, lit dots for each check, old yellowed glass with dust and scratches.
  */
 class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
@@ -763,7 +763,7 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
 
         c.save()
         c.clipPath(clip)
-        // Backlit exactly like the broadcast set with its lamp full on.
+        // Backlit with its lamp full on.
         Screen.face(c, inner, 1f)
 
         val gx = inner.left + labW; val gw = inner.right - pad - gx
@@ -829,7 +829,7 @@ class LogChartView(ctx: Context) : CabinetView(ctx), MoodGlow {
 }
 
 /**
- * A nameplate lit from behind like the broadcast screen: pale gold lettering on a
+ * A nameplate lit from behind like the dials: pale gold lettering on a
  * backlit amber strip under old glass, in a worn chrome bezel.
  */
 class LitNameplate(ctx: Context, private val text: String) : CabinetView(ctx), MoodGlow {
@@ -864,7 +864,7 @@ class LitNameplate(ctx: Context, private val text: String) : CabinetView(ctx), M
 /**
  * The station log in the lid: a world chart with the station pinned on it and the
  * reading below, behind one backlit amber screen in a worn chrome bezel, lit like the
- * broadcast set's dial. Dims and warms up when retuned; a cursor sweeps the
+ * other dials. Dims and warms up when retuned; a cursor sweeps the
  * chart while a fix is coming in.
  */
 class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
@@ -955,7 +955,7 @@ class StationLogView(ctx: Context) : CabinetView(ctx), MoodGlow {
         c.drawText("STATION LOG", w / 2, ribbonH / 2 + ribbonText.textSize * 0.36f, ribbonText)
         Hardware.jewel(c, 12 * d, ribbonH / 2, 3.4f * d, LOG_GREEN, d)   // a green lamp on the nameplate
 
-        // The screen: backlit like the broadcast set, warming up with the reading.
+        // The screen: backlit, warming up with the reading.
         Screen.bezel(c, outer, 10 * d, 41, d)
         c.save(); c.clipPath(clip)
         Screen.face(c, inner, glow)
