@@ -8,15 +8,14 @@ It looks and sounds like a well-used 1940s portable shortwave set: black alligat
 
 - **The dial** points to QUIET, HEADS-UP or OPEN for the chosen waveband; its lamp warms up as the set comes on.
 - **Waveband buttons** (ALL, HF, 6 M, 2 M, 70 CM, CB) filter the readings, with a pilot lamp showing each band's condition.
-- **Rocker switches:** **SOUND** (all the set's sounds, including the broadcast radio), **MONITOR** (background checks) and **GPS** (use the phone's location).
+- **Rocker switches:** **SOUND** (the set's sounds), **MONITOR** (background checks) and **GPS** (use the phone's location).
 - **MOOD LIGHT** knob: the room goes dark around a table lamp and every dial, chart and jewel lamp glows warm orange.
-- **The little broadcast set** under the speaker has a lit SWR / power meter whose needle swings with the music, and plays old-time radio: **1** The 1920s Radio Network, **2** Old Time Radio Service, **3** your own station (the first press asks for a stream address; long-press to change it). It keeps playing in the background with a Stop button in its notification.
 - **Check now** runs every check straight away, to the sound of the valves warming up. A check also runs every time the app opens.
 
 ## In the lid
 
 - **Station log:** a world chart with your station pinned, your town, coordinates and Maidenhead locator. **Check my location** takes a fresh fix (with a direction-finding sweep and "QTH?" in Morse).
-- **DX log:** the last 24 hours of checks for each band, behind a backlit glass screen glowing warm amber like the broadcast dial.
+- **DX log:** the last 24 hours of checks for each band, behind a backlit glass screen glowing warm amber.
 - **Readings**, **Sources** (links to the maps and forecasts behind the checks), **Bands**, **Settings** and **Support PropWatch**.
 
 ## What it checks
